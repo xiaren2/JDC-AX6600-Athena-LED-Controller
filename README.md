@@ -4,7 +4,7 @@
 
 
 ---
-
+原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller
 <a name="简体中文"></a>
 ## 🇨🇳 简体中文介绍
 
