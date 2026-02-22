@@ -1,4 +1,29 @@
 local sys = require "luci.sys"
+local uci = require "luci.model.uci".cursor()
+
+-- ============================================================
+-- 如果 /etc/config/athena_led 不存在或没有 general section
+-- 自动生成默认配置（只生成一次）
+-- ============================================================
+if not uci:get("athena_led", "general") then
+    uci:section("athena_led", "settings", "general")
+
+    uci:set("athena_led", "general", "enabled", "0")
+    uci:set("athena_led", "general", "duration", "5")
+    uci:set("athena_led", "general", "light_level", "5")
+    uci:set("athena_led", "general", "display_order", "banner timeBlink weather cpu mem")
+    uci:set("athena_led", "general", "net_interface", "br-lan")
+    uci:set("athena_led", "general", "wan_ip_custom_url", "http://checkip.amazonaws.com")
+    uci:set("athena_led", "general", "custom_content", "Roc-Gateway")
+    uci:set("athena_led", "general", "weather_city", "Shenzhen")
+    uci:set("athena_led", "general", "weather_source", "wttr")
+    uci:set("athena_led", "general", "weather_format", "simple")
+    uci:set("athena_led", "general", "temp_sensors", "0 1 2 3 4")
+    uci:set("athena_led", "general", "enable_sleep", "0")
+    uci:set("athena_led", "general", "http_length", "15")
+
+    uci:commit("athena_led")
+end
 
 m = Map("athena_led",
     translate("Athena LED Controller"),
@@ -107,9 +132,11 @@ o = s:taboption("sleep", Flag, "enable_sleep", translate("Enable Scheduled Sleep
 
 o = s:taboption("sleep", Value, "off_time", translate("Screen Off Time"))
 o:depends("enable_sleep", "1")
+o.placeholder = "23:00"
 
 o = s:taboption("sleep", Value, "on_time", translate("Screen On Time"))
 o:depends("enable_sleep", "1")
+o.placeholder = "07:00"
 
 -- ================= SERVICE =================
 btn_restart = s:taboption("service", Button, "_restart", translate("Restart Service"))
