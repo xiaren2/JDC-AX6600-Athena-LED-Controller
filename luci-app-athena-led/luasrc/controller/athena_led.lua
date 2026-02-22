@@ -6,9 +6,9 @@ local http = require "luci.http"
 
 function index()
     -- 如果配置文件不存在，就不显示菜单
-    if not nixio.fs.access("/etc/config/athena_led") then
-        return
-    end
+   --  if not nixio.fs.access("/etc/config/athena_led") then
+     --    return
+ --    end
 
     -- 1. 主菜单入口
     -- 我把它改到了 "Services" (服务) 下，这样更符合 OpenWrt 插件规范
