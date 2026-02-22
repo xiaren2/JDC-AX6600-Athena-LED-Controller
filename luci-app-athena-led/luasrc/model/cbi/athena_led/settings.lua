@@ -81,14 +81,17 @@ o:value("http_custom", translate("HTTP Request Result"))
 -- ================= NETWORK =================
 o = s:taboption("network", Value, "net_interface", translate("Network Interface"))
 o.default = "br-lan"
+o.description = translate("Interface for traffic monitoring (e.g. br-lan).")
 for _, dev in ipairs(sys.net.devices()) do
     if dev ~= "lo" then o:value(dev) end
 end
 
 o = s:taboption("network", Value, "wan_ip_custom_url", translate("WAN IP API"))
+o.description = translate("Select a preset or enter custom URL.")
 o:value("http://checkip.amazonaws.com", "Amazon AWS")
 o:value("http://ifconfig.me/ip", "ifconfig.me")
 o:value("http://ipv4.icanhazip.com", "icanhazip.com")
+o.default = "http://checkip.amazonaws.com"
 
 -- ================= SENSOR =================
 o = s:taboption("sensor", MultiValue, "temp_sensors", translate("Temperature Sensors"))
@@ -100,15 +103,18 @@ o:value("3", "wcss-phya1")
 o:value("4", "cpu")
 o:value("5", "lpass")
 o:value("6", "ddrss")
+o.description = translate("Select sensors to cycle through.")
 
 o = s:taboption("sensor", ListValue, "weather_source", translate("Weather Source"))
 o:value("wttr", "Wttr.in")
 o:value("openmeteo", "Open-Meteo")
 o:value("seniverse", "Seniverse")
 o:value("uapis", "Uapis.cn")
+o.default = "wttr"
 
 o = s:taboption("sensor", Value, "weather_city", translate("City Name"))
 o.default = "Shenzhen"
+o.description = translate("Pinyin or English.")
 
 o = s:taboption("sensor", Value, "seniverse_key", translate("Seniverse API Key"))
 o:depends("weather_source", "seniverse")
@@ -120,12 +126,16 @@ o:value("full", translate("Full (Original)"))
 -- ================= CUSTOM =================
 o = s:taboption("custom", Value, "custom_content", translate("Custom Text"))
 o.placeholder = "Roc-Gateway"
+o.description = translate("Effective only when 'Custom Text' is added to Display Order.")
 
 o = s:taboption("custom", Value, "http_url", translate("HTTP Request URL"))
+o.placeholder = "http://192.168.1.1/api/status"
+o.description = translate("Effective only when 'HTTP Request Result' is added to Display Order.")
 
 o = s:taboption("custom", Value, "http_length", translate("HTTP Max Length"))
 o.datatype = "uinteger"
 o.default = "15"
+o.description = translate("Max characters to display (defaults to 15). Set higher for longer text.")
 
 -- ================= SLEEP =================
 o = s:taboption("sleep", Flag, "enable_sleep", translate("Enable Scheduled Sleep"))
@@ -133,10 +143,12 @@ o = s:taboption("sleep", Flag, "enable_sleep", translate("Enable Scheduled Sleep
 o = s:taboption("sleep", Value, "off_time", translate("Screen Off Time"))
 o:depends("enable_sleep", "1")
 o.placeholder = "23:00"
+o.description = translate("HH:MM format (e.g. 23:00).")
 
 o = s:taboption("sleep", Value, "on_time", translate("Screen On Time"))
 o:depends("enable_sleep", "1")
 o.placeholder = "07:00"
+o.description = translate("HH:MM format (e.g. 07:00).")
 
 -- ================= SERVICE =================
 btn_restart = s:taboption("service", Button, "_restart", translate("Restart Service"))
