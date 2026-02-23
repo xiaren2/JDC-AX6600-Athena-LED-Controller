@@ -4,7 +4,11 @@
 
 
 ---
-原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller
+在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller   基础上修改界面
+<img width="1533" height="757" alt="image" src="https://github.com/user-attachments/assets/507336ec-7634-422e-b4ec-45013094f248" />
+
+
+
 <a name="简体中文"></a>
 ## 🇨🇳 简体中文介绍
 
