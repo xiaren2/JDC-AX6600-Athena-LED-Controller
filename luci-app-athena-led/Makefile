@@ -64,6 +64,8 @@ define Package/$(PKG_NAME)/install
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/athena_led $(1)/etc/config/
 
+	$(INSTALL_DIR) $(1)/etc/rc.button
+	$(INSTALL_BIN) ./root/etc/rc.button/BTN_0 $(1)/etc/rc.button/
 
 	$(INSTALL_DIR) $(1)/usr/bin
 	tar xf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
