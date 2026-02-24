@@ -1020,6 +1020,9 @@ async fn process_loop(
 
         match module {
             // --- 基础时间类 ---
+            "year" => {
+    text_to_show = Local::now().format("%Y").to_string();
+},
             "date" => text_to_show = Local::now().format("%m-%d").to_string(),
             
             "time" => {
