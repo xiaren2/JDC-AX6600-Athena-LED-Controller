@@ -61,6 +61,7 @@ o.description = translate("Time in seconds to display each module.")
 
 o = s:taboption("general", DynamicList, "display_order", translate("Display Order & Modules"))
 o.description = translate("Add modules and drag to reorder.")
+o:value("year", translate("Year (YYYY)"))
 o:value("date", translate("Date (MM-DD)"))
 o:value("time", translate("Time (HH:MM)"))
 o:value("timeBlink", translate("Time (Blink)"))
