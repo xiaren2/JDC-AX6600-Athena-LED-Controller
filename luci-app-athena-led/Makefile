@@ -1,7 +1,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-athena-led
-PKG_VERSION:=1.0.5
+PKG_VERSION:=1.1.0
 PKG_RELEASE:=1
 
 
@@ -13,7 +13,7 @@ PKG_LICENSE_FILES:=LICENSE
 PKG_SOURCE:=athena-led-aarch64-unknown-linux-musl-v$(PKG_VERSION).tar.gz
 
 
-PKG_SOURCE_URL:=https://github.com/xiaren2/JDC-AX6600-Athena-LED-Controller/releases/download/v$(PKG_VERSION)/
+PKG_SOURCE_URL:=https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller/releases/download/v$(PKG_VERSION)/
 
 
 PKG_HASH:=skip
@@ -63,8 +63,8 @@ define Package/$(PKG_NAME)/install
 	
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/athena_led $(1)/etc/config/
-
 	
+
 	$(INSTALL_DIR) $(1)/usr/bin
 	tar xf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/athena-led $(1)/usr/bin/
