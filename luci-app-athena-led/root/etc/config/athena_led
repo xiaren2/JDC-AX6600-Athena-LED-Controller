@@ -5,7 +5,7 @@ config settings 'general'
 
 	# 核心：显示顺序
 	# 注意：在 LuCI 保存后，这里可能会变成多行 list display_order '...' 格式，这是正常的
-	option display_order 'banner time temp dev cpu mem ip weather'
+	option display_order 'year banner time temp dev cpu mem ip weather'
 
 	# 网络与接口
 	option net_interface 'br-lan'
