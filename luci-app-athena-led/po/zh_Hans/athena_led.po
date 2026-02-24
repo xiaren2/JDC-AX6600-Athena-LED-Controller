@@ -34,6 +34,9 @@ msgid "Add modules and drag to reorder."
 msgstr "添加模块并拖拽调整显示顺序。"
 
 # 模块名称
+msgid "Year (YYYY)"
+msgstr "年份 (YYYY)"
+
 msgid "Date (MM-DD)"
 msgstr "日期 (MM-DD)"
 
