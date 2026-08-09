@@ -1,4 +1,4 @@
-name: Build Chain (Rust Binary + IPK + APK)
+name: Build Chain all (Rust Binary + IPK + APK)
 
 on:
   release:
@@ -19,14 +19,13 @@ on:
 permissions:
   contents: write
 
-env:
-  BUILD_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
-
 jobs:
   # 🟢 第一阶段：编译 Rust 核心二进制
   build_rust:
     name: 1. Build Rust Core
     runs-on: ubuntu-latest
+    env:
+      BUILD_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
     steps:
       - name: Show Build Branch
         run: echo "🔧 Building branch: ${{ env.BUILD_BRANCH }}"
@@ -106,6 +105,8 @@ jobs:
     name: 2. Build ${{ matrix.type }}
     needs: build_rust
     runs-on: ubuntu-latest
+    env:
+      BUILD_BRANCH: ${{ github.event.inputs.branch || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
