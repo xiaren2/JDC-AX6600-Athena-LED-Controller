@@ -1,4 +1,4 @@
-name: Build Chain all (Rust Binary + IPK + APK)
+name: Build Chain (Rust Binary + IPK + APK)
 
 on:
   release:
