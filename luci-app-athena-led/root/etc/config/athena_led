@@ -5,14 +5,14 @@ config settings 'general'
 
 	# 核心：显示顺序
 	# 注意：在 LuCI 保存后，这里可能会变成多行 list display_order '...' 格式，这是正常的
-	option display_order 'year banner time temp dev cpu mem ip weather'
+	option display_order 'date'
 
 	# 网络与接口
 	option net_interface 'br-lan'
 	option wan_ip_custom_url 'http://checkip.amazonaws.com'
 
 	# 自定义内容
-	option custom_content 'Roc-Gateway'
+	option custom_content 'AX6600'
 	option http_url ''
 
 	# 天气设置
