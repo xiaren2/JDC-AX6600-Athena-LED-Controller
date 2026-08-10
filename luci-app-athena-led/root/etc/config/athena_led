@@ -12,7 +12,7 @@ config settings 'general'
 	option wan_ip_custom_url 'http://checkip.amazonaws.com'
 
 	# 自定义内容
-	option custom_content 'Roc-Gateway'
+	option custom_content 'AX6600'
 	option http_url ''
 
 	# 天气设置
