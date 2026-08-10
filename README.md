@@ -4,8 +4,13 @@
 
 
 ---
-在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller   基础上修改界面
+在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller   基础上修改，全程由AI进行修改。有疑问请自行修改代码，或者提交Issuse
+
 <img width="1533" height="757" alt="image" src="https://github.com/user-attachments/assets/507336ec-7634-422e-b4ec-45013094f248" />
+
+<img width="1192" height="552" alt="image" src="https://github.com/user-attachments/assets/748e57c5-1dc9-4d38-9b27-6bde80cc994c" />
+
+<img width="1090" height="498" alt="image" src="https://github.com/user-attachments/assets/256d9745-c641-467f-baf5-fa8a987663b2" />
 
 
 
