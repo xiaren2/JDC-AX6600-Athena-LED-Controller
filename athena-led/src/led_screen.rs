@@ -1,6 +1,8 @@
 use anyhow::Result;
 use sysfs_gpio::{Direction, Pin};
 use crate::char_dict::CHAR_DICT;
+use tokio::sync::watch;
+use std::sync::{Arc, Mutex};
 
 const LOW: u8 = 0x00;
 const HIGH: u8 = 0x01;
@@ -16,6 +18,10 @@ pub struct LedScreen {
     // 禁用 LED 掩码: bit0=时钟 bit1=奖牌 bit2=上箭头 bit3=下箭头
     // 1 = 禁用 (用户勾选了关闭), 0 = 正常
     disabled_led_mask: u8,
+    // 可选: 按键 watch channel. 存在时, flow() 滚动显示每帧都会检查按键中断
+    interrupt_rx: Option<Arc<Mutex<watch::Receiver<i32>>>>,
+    // 检查中断时跟踪的 last_seen 缓存
+    interrupt_last_seen: i32,
 }
 
 pub struct LedScreenUnit {
@@ -40,12 +46,34 @@ impl LedScreen {
             left_screen,
             right_screen,
             disabled_led_mask,
+            interrupt_rx: None,
+            interrupt_last_seen: 0,
         };
 
         screen.set_show_model()?;
         screen.set_data_model()?;
 
         Ok(screen)
+    }
+
+    /// 绑定按键 watch channel, 后续 flow/滚动 会在每帧检查按键中断
+    pub fn bind_interrupt_rx(&mut self, rx: Arc<Mutex<watch::Receiver<i32>>>) {
+        self.interrupt_last_seen = *rx.lock().unwrap().borrow();
+        self.interrupt_rx = Some(rx);
+    }
+
+    /// 检查是否有待处理按键/息屏指令.
+    /// 返回 Some(cmd) 表示有新命令: -1=息屏, >0=切台, None=无
+    pub fn poll_interrupt(&mut self) -> Option<i32> {
+        let rx = self.interrupt_rx.as_ref()?;
+        let guard = rx.lock().ok()?;
+        let current = *(*guard).borrow();
+        if current != self.interrupt_last_seen {
+            self.interrupt_last_seen = current;
+            if current == 0 { return None; }
+            return Some(current);
+        }
+        None
     }
 
     pub fn set_show_model(&mut self) -> Result<()> {
@@ -103,7 +131,20 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
             }
             off[..i.min(27)].copy_from_slice(&data[start..start + i.min(27)]);
             self.do_write_data(&off, status)?;
-            std::thread::sleep(std::time::Duration::from_millis(128));
+
+            // 滚动期间检查按键中断 (短按切台/长按息屏/双击), 有按键立即退出滚动
+            if self.poll_interrupt().is_some() {
+                return Ok(());
+            }
+            // 把 128ms 拆成小段轮询, 提高按键响应灵敏度 (20ms 内即可打断)
+            let mut slept = 0u64;
+            while slept < 128 {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                slept += 20;
+                if self.poll_interrupt().is_some() {
+                    return Ok(());
+                }
+            }
         }
         Ok(())
     }

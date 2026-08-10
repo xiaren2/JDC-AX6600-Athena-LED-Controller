@@ -16,6 +16,7 @@ use std::env;
 use std::fs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 use tokio::signal::unix::{signal, SignalKind};
@@ -653,6 +654,10 @@ async fn main() -> Result<()> {
 
     let (tx, rx) = watch::channel(1i32);
 
+    // 共享 watch receiver 给屏幕底层 flow 滚动检测按键中断 (flow() 里 20ms 轮询)
+    let rx_for_screen = Arc::new(Mutex::new(rx.clone()));
+    screen.bind_interrupt_rx(Arc::clone(&rx_for_screen));
+
     // ==========================================
     // 🎮 启动按键监听器 (GPIO 引脚 71)
     // 双后端: 字符设备 /dev/gpiochipN (优先) / debugfs 兜底
@@ -941,6 +946,11 @@ async fn show_module_with_interrupt(
         }
         _ => return Ok(false),
     }
+    // [修复] write_data 内部 flow 滚动可能被按键打断
+    // flow 的 poll_interrupt 用屏幕自己的 last_seen, 不影响本函数的 last_seen
+    // 所以这里用 check_key 能检测到 flow 期间发生的按键事件, 立即返回中断
+    if check_key() { return Ok(true); }
+    drop(check_key);  // 释放对 rx 的借用, 让 sleep_with_key_check 能使用
     Ok(sleep_with_key_check(args.seconds, rx, current_channel, total).await)
 }
 
