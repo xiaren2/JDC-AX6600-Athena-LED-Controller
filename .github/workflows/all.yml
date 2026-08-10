@@ -22,11 +22,12 @@ jobs:
   build_rust:
     name: 1. Build Rust Core
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.version.outputs.VERSION }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
-          # 如果是手动触发且输入了指定分支，则检出该分支；否则自动检出触发事件的当前分支
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
 
       # 1. 自动查找 Makefile 读取版本号
@@ -79,11 +80,12 @@ jobs:
           echo "ASSET_NAME=$FILENAME" >> $GITHUB_OUTPUT
           echo "✅ Packed binary: $FILENAME"
 
-      # 6. 上传 Rust 二进制到 Release (仅在 Release 事件或关联 Release 时执行)
+      # 6. 上传 Rust 二进制到 Release
       - name: Upload Rust Binary to Release
         uses: softprops/action-gh-release@v1
-        if: github.event_name == 'release'
         with:
+          tag_name: "v${{ steps.version.outputs.VERSION }}"
+          name: "Release v${{ steps.version.outputs.VERSION }}"
           files: athena-led/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -180,18 +182,18 @@ jobs:
           make package/luci-app-athena-led/download V=s
           make package/luci-app-athena-led/compile V=s -j$(nproc)
 
+      # 替换：移除 if 条件，显式指定 tag_name 追加上传到同一个 Release
       - name: Upload Package to Release
         uses: softprops/action-gh-release@v1
-        if: github.event_name == 'release'
         with:
+          tag_name: "v${{ needs.build_rust.outputs.VERSION }}"
           files: sdk/bin/**/luci-app-athena-led*.${{ matrix.type }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # 增加：如果是手动触发或普通 Push，将编译好的安装包存为 Artifact 方便下载测试
-      - name: Upload Package Artifact (Non-Release)
+      # 同时也保留 Artifact 下载备份
+      - name: Upload Package Artifact
         uses: actions/upload-artifact@v4
-        if: github.event_name != 'release'
         with:
           name: luci-app-athena-led-${{ matrix.type }}
           path: sdk/bin/**/luci-app-athena-led*.${{ matrix.type }}
