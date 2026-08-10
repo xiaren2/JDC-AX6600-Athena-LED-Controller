@@ -4,9 +4,11 @@
 
 
 ---
-在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller   基础上修改，全程由AI进行修改。有疑问请自行修改代码，或者提交Issuse
+在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller  1.0版本 基础上修改，全程由AI进行修改。有疑问请自行修改代码，或者提交Issuse
 
-<img width="1533" height="757" alt="image" src="https://github.com/user-attachments/assets/507336ec-7634-422e-b4ec-45013094f248" />
+新版apk文件安装方式 apk add --allow-untrusted /tmp/luci-app-athena-led-1.0.5-r1.apk
+
+<img width="1382" height="810" alt="image" src="https://github.com/user-attachments/assets/f1220501-6c2b-40fe-856e-1f92add260b1" />
 
 <img width="1192" height="552" alt="image" src="https://github.com/user-attachments/assets/748e57c5-1dc9-4d38-9b27-6bde80cc994c" />
 
