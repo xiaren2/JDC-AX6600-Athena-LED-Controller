@@ -8,6 +8,8 @@
 
 新版apk文件安装方式 apk add --allow-untrusted /tmp/luci-app-athena-led-1.0.5-r1.apk
 
+js分支https://github.com/xiaren2/JDC-AX6600-Athena-LED-Controller/tree/js
+
 <img width="1382" height="810" alt="image" src="https://github.com/user-attachments/assets/f1220501-6c2b-40fe-856e-1f92add260b1" />
 
 <img width="1192" height="552" alt="image" src="https://github.com/user-attachments/assets/748e57c5-1dc9-4d38-9b27-6bde80cc994c" />
