@@ -1,6 +1,34 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
+# 运行状态区域
+msgid "Running Status"
+msgstr "运行状态"
+
+msgid "Collecting data..."
+msgstr "正在收集数据..."
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Unknown Error"
+msgstr "未知错误"
+
+msgid "Service restarted successfully."
+msgstr "服务重启成功。"
+
+msgid "Service stopped."
+msgstr "服务已停止。"
+
+msgid "Failed to restart: "
+msgstr "重启失败："
+
+msgid "Failed to stop: "
+msgstr "停止失败："
+
 # 标题与描述
 msgid "Athena LED Controller"
 msgstr "雅典娜 LED 控制器"
