@@ -123,6 +123,13 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
     }
 
     fn flow(&mut self, data: &[u8], status: u8) -> Result<()> {
+        // 进入滚动前同步 last_seen, 避免之前已消费的按键误触发中断
+        // 只有 flow 期间新发生的按键才应该中断滚动
+        if let Some(rx) = &self.interrupt_rx {
+            if let Ok(guard) = rx.lock() {
+                self.interrupt_last_seen = *(*guard).borrow();
+            }
+        }
         let mut start = 0;
         for i in 1..=data.len() {
             let mut off = [0u8; 27];
