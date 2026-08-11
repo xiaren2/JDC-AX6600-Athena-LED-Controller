@@ -51,7 +51,9 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	[ -d ./po/zh_Hans ] && po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/zh_Hans.lmo || true
+	if [ -d ./po/zh_Hans ]; then
+		po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo
+	fi
 endef
 
 define Package/$(PKG_NAME)/install
@@ -80,9 +82,13 @@ define Package/$(PKG_NAME)/install
 	tar xf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/athena-led $(1)/usr/bin/
 
-	# 国际化翻译
+	# 国际化翻译 (JS 版 LuCI 路径)
 	$(INSTALL_DIR) $(1)/usr/share/luci/i18n
-	[ -f $(PKG_BUILD_DIR)/zh_Hans.lmo ] && $(INSTALL_DATA) $(PKG_BUILD_DIR)/zh_Hans.lmo $(1)/usr/share/luci/i18n/athena_led.zh-cn.lmo || true
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/share/luci/i18n/
+
+	# 国际化翻译 (兼容旧版 Lua LuCI 路径)
+	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
