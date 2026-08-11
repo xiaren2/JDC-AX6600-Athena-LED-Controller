@@ -51,9 +51,7 @@ define Build/Prepare
 endef
 
 define Build/Compile
-	if [ -d ./po/zh_Hans ]; then
-		po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo
-	fi
+	[ -d ./po/zh_Hans ] && po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo; true
 endef
 
 define Package/$(PKG_NAME)/install
