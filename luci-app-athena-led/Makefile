@@ -26,7 +26,7 @@ define Package/$(PKG_NAME)
   SUBMENU:=3. Applications
   TITLE:=LuCI Support for Athena LED (Enhanced)
 
-  DEPENDS:=+luci-base @(aarch64||arm)
+  DEPENDS:=+luci-base +rpcd @(aarch64||arm)
   PKGARCH:=all
 endef
 
@@ -52,6 +52,10 @@ endef
 
 define Build/Compile
 	[ -d ./po/zh_Hans ] && po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo; true
+	# 双后缀通杀: 不同固件 luci.i18n 会按 zh-cn / zh_Hans 不同后缀查翻译文件
+	if [ -f $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo ]; then \
+		cp $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(PKG_BUILD_DIR)/athena_led.zh_Hans.lmo; \
+	fi; true
 endef
 
 define Package/$(PKG_NAME)/install
@@ -62,6 +66,10 @@ define Package/$(PKG_NAME)/install
 	# 菜单注册
 	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
 	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-athena-led.json $(1)/usr/share/luci/menu.d/
+
+	# rpcd ACL 权限 (JS 版 LuCI 必须)
+	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
+	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-athena-led.json $(1)/usr/share/rpcd/acl.d/
 
 	# init.d 启动脚本
 	$(INSTALL_DIR) $(1)/etc/init.d
@@ -80,13 +88,30 @@ define Package/$(PKG_NAME)/install
 	tar xf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/athena-led $(1)/usr/bin/
 
-	# 国际化翻译 (JS 版 LuCI 路径)
+	# 国际化翻译 (JS 版 LuCI 路径) - 双后缀
 	$(INSTALL_DIR) $(1)/usr/share/luci/i18n
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/share/luci/i18n/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo   $(1)/usr/share/luci/i18n/ 2>/dev/null; true
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh_Hans.lmo $(1)/usr/share/luci/i18n/ 2>/dev/null; true
 
 	# 国际化翻译 (兼容旧版 Lua LuCI 路径)
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
-	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo   $(1)/usr/lib/lua/luci/i18n/ 2>/dev/null; true
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh_Hans.lmo $(1)/usr/lib/lua/luci/i18n/ 2>/dev/null; true
+endef
+
+# 装完清缓存 + 重载 rpcd, 否则:
+#   - LuCI 页面会白屏直到下次重启 (缓存未重建)
+#   - ACL 权限不生效 (rpcd 未重读)
+define Package/$(PKG_NAME)/postinst
+#!/bin/sh
+if [ -z "$${IPKG_INSTROOT}" ]; then
+    rm -rf /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null
+    mkdir -p /tmp/luci-modulecache 2>/dev/null
+    if command -v /etc/init.d/rpcd >/dev/null 2>&1; then
+        /etc/init.d/rpcd reload >/dev/null 2>&1 || true
+    fi
+fi
+exit 0
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))
