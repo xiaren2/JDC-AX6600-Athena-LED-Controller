@@ -19,13 +19,12 @@ start_service() {
 
     check_binary || return 1
 
-    # --- 1. 读取所有配置 (基础 + 定时 + 按键 + LED + GPIO/缓存) ---
+    # --- 1. 读取所有配置 (基础 + 定时 + 按键 + LED) ---
     local seconds lightLevel option netInterface ipUrl value url \
           weatherCity weatherSource seniverseKey tempFlag \
           enableSleep sleepStart sleepEnd \
           buttonGpio enableMeshButton meshButtonGpio meshShortAction meshLongAction \
-          disableLedClock disableLedMedal disableLedUp disableLedDown \
-          httpCacheSecs gpioBackend gpioBase
+          disableLedClock disableLedMedal disableLedUp disableLedDown
 
     # 基础配置
     config_get seconds "$cfg" 'duration' '5'
@@ -60,17 +59,6 @@ start_service() {
     config_get_bool disableLedUp "$cfg" 'disable_led_up' '0'
     config_get_bool disableLedDown "$cfg" 'disable_led_down' '0'
 
-    # ★ 网络请求缓存间隔 (秒) - 默认 300s=5min, NetAgent 后台按这个频率刷新
-    #   太长会数据旧, 太短会被 API 拉黑; 建议 60~1800
-    config_get httpCacheSecs "$cfg" 'http_cache_secs' '300'
-
-    # ★ GPIO 后端: auto(优先字符设备, 失败回退 sysfs) / cdev / sysfs
-    config_get gpioBackend "$cfg" 'gpio_backend' 'auto'
-
-    # ★ GPIO 基址: auto 自动探测, 也可填 512 (内核6.x) / 432 (内核5.4) / 0
-    #   只有 sysfs 后端用; cdev 后端直接用字符设备不需要 base
-    config_get gpioBase "$cfg" 'gpio_base' 'auto'
-
     # 逻辑处理：如果不启用休眠，强制传空字符串，Rust 端收到空字符串则不执行休眠逻辑
     if [ "$enableSleep" -eq 0 ]; then
         sleepStart=""
@@ -95,11 +83,6 @@ start_service() {
     procd_append_param command --seniverse-key "$seniverseKey"
     procd_append_param command --weather-format "$weatherFormat"
     procd_append_param command --temp-flag "$tempFlag"
-
-    # ★ 缓存间隔 + GPIO 后端 + GPIO base (核心新参数)
-    procd_append_param command --http-cache-secs "$httpCacheSecs"
-    procd_append_param command --gpio-backend "$gpioBackend"
-    procd_append_param command --gpio-base "$gpioBase"
     
     # 定时参数 (必须在 close_instance 之前添加！)
     procd_append_param command --sleep-start "$sleepStart"

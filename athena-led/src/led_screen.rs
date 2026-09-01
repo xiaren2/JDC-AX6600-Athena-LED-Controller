@@ -1,373 +1,388 @@
-// ==========================================
-// 🖥️ led_screen.rs — AX6600 屏幕驱动 (修复版, gpiocdev 0.7 正确 API)
-//
-// 本次修复项 (对应 CI 2 个 E0433 + E0599):
-//   ✅ gpiocdev 0.7 入口是 gpiocdev::Request::builder()
-//        以前写的 gpiocdev::Builder::new() → E0433 (Builder 不在 crate 根)
-//   ✅ 多条线批量申请用 .with_lines(&[..]) / .as_output(Value::Inactive)
-//   ✅ 设置单条线用 req.set_value(offset, Value::Active/Inactive)
-//        以前写的 req.set_line(offset, v) → E0599 (没这个方法)
-//   ✅ 引脚偏移化: PIN_STB_LEFT=69 PIN_STB_RIGHT=70 PIN_CLK=73 PIN_DIO=74
-//        sysfs 后端 gpio_base + offset; cdev 后端直接用 offset
-//   ✅ 自动探测 gpio_base (兼容 base=512/432/0 的各类固件)
-//   ✅ write_data 尾部 pop() 去掉多余空格 (刚好 27 列不触发滚动)
-//   ✅ flow() 用 tokio::time::sleep (滚动不阻塞按键)
-// ==========================================
-#![allow(unused)]
-
-use anyhow::{anyhow, Context, Result};
+use anyhow::Result;
+use sysfs_gpio::{Direction, Pin};
 use crate::char_dict::CHAR_DICT;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
+use tokio::sync::watch;
+use std::sync::{Arc, Mutex};
 
-const LOW:  u8 = 0x00;
+const LOW: u8 = 0x00;
 const HIGH: u8 = 0x01;
 
-// ★ AX6600 物理引脚偏移 (主控 TLMM, 芯片级 offset, 与 gpio_base 无关)
-pub const PIN_STB_LEFT:  u32 = 69;
-pub const PIN_STB_RIGHT: u32 = 70;
-pub const PIN_CLK:       u32 = 73;
-pub const PIN_DIO:       u32 = 74;
+// Display mode commands
+const COMMAND1: u8 = 0b00000011; // Display mode
+const COMMAND2: u8 = 0b01000000; // Data mode
+const COMMAND3: u8 = 0b11000000; // Display address
 
-const COMMAND1: u8 = 0b00000011;
-const COMMAND2: u8 = 0b01000000;
-const COMMAND3: u8 = 0b11000000;
-
-// ==========================================
-// 🔎 自动探测 gpio_base (sysfs 用)
-// ==========================================
-pub fn detect_gpio_base() -> u64 {
-    let mut best: Option<(u64, u64, bool)> = None;
-    if let Ok(entries) = fs::read_dir("/sys/class/gpio") {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with("gpiochip") { continue; }
-            let path = entry.path();
-            let read = |f: &str| fs::read_to_string(path.join(f)).ok().and_then(|s| s.trim().parse::<u64>().ok());
-            let base  = match read("base")  { Some(b) => b, None => continue };
-            let ngpio = read("ngpio").unwrap_or(0);
-            let label = fs::read_to_string(path.join("label")).unwrap_or_default().trim().to_lowercase();
-            let is_main = label.contains("pinctrl") || label.contains("tlmm");
-            let better = match &best {
-                None => true,
-                Some((_, bn, bm)) => (is_main && !*bm) || (is_main == *bm && ngpio > *bn),
-            };
-            if better { best = Some((base, ngpio, is_main)); }
-        }
-    }
-    match best {
-        Some((base, n, _)) => {
-            println!("🔍 [GPIO] 自动探测主控 base={} ngpio={}", base, n);
-            base
-        }
-        None => {
-            println!("⚠️  [GPIO] 探测不到, 回退 base=512");
-            512
-        }
-    }
-}
-
-// ==========================================
-// 🔎 找主控字符设备 /dev/gpiochipN
-// ==========================================
-pub fn find_main_chip() -> Option<PathBuf> {
-    let mut best: Option<(PathBuf, u32, bool)> = None;
-    if let Ok(entries) = fs::read_dir("/dev") {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if !name.starts_with("gpiochip") { continue; }
-            let path = entry.path();
-            let info = match gpiocdev::Chip::from_path(&path).and_then(|c| c.info()) {
-                Ok(i) => i, Err(_) => continue,
-            };
-            let label = info.label.to_lowercase();
-            let is_main = label.contains("pinctrl") || label.contains("tlmm");
-            let better = match &best {
-                None => true,
-                Some((_, bn, bm)) => (is_main && !*bm) || (is_main == *bm && info.num_lines > *bn),
-            };
-            if better { best = Some((path, info.num_lines, is_main)); }
-        }
-    }
-    best.map(|(p, n, _)| {
-        println!("🔍 [GPIO] 主控字符设备 {} (lines={})", p.display(), n);
-        p
-    })
-}
-
-// ==========================================
-// 🧱 引脚枚举
-// ==========================================
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum Line { StbLeft, StbRight, Clk, Dio }
-
-// ==========================================
-// 🧱 GPIO 双后端 (cdev 优先, sysfs 兜底)
-// ==========================================
-enum GpioBus {
-    Cdev { req: gpiocdev::Request },
-    Sysfs {
-        stb_l: sysfs_gpio::Pin,
-        stb_r: sysfs_gpio::Pin,
-        clk:   sysfs_gpio::Pin,
-        dio:   sysfs_gpio::Pin,
-    },
-}
-
-impl GpioBus {
-    fn set(&mut self, line: Line, level: u8) -> Result<()> {
-        let v = if level == LOW {
-            gpiocdev::line::Value::Inactive
-        } else {
-            gpiocdev::line::Value::Active
-        };
-        match self {
-            // ✅ 修复: gpiocdev 0.7 写单条线 → req.set_value(offset, Value)
-            //         之前写 set_line(offset, v) → E0599 方法不存在
-            GpioBus::Cdev { req } => {
-                let offset = match line {
-                    Line::StbLeft  => PIN_STB_LEFT,
-                    Line::StbRight => PIN_STB_RIGHT,
-                    Line::Clk      => PIN_CLK,
-                    Line::Dio      => PIN_DIO,
-                };
-                req.set_value(offset, v)
-                    .with_context(|| format!("设置 GPIO offset={} level={:?} 失败", offset, level))?;
-            }
-            GpioBus::Sysfs { stb_l, stb_r, clk, dio } => {
-                let pin = match line {
-                    Line::StbLeft  => *stb_l,
-                    Line::StbRight => *stb_r,
-                    Line::Clk      => *clk,
-                    Line::Dio      => *dio,
-                };
-                pin.set_value(level)
-                    .with_context(|| format!("sysfs 写引脚失败 line={:?}", line))?;
-            }
-        }
-        Ok(())
-    }
-}
-
-impl Drop for GpioBus {
-    fn drop(&mut self) {
-        if let GpioBus::Sysfs { stb_l, stb_r, clk, dio } = self {
-            let _ = stb_l.unexport();
-            let _ = stb_r.unexport();
-            let _ = clk.unexport();
-            let _ = dio.unexport();
-        }
-    }
-}
-
-// ==========================================
-// 🖥️ LedScreen 对外结构
-// ==========================================
 pub struct LedScreen {
-    bus: GpioBus,
+    left_screen: LedScreenUnit,
+    right_screen: LedScreenUnit,
+    // 禁用 LED 掩码: bit0=时钟 bit1=奖牌 bit2=上箭头 bit3=下箭头
+    // 1 = 禁用 (用户勾选了关闭), 0 = 正常
+    disabled_led_mask: u8,
+    // 可选: 按键 watch channel. 存在时, flow() 滚动显示每帧都会检查按键中断
+    interrupt_rx: Option<Arc<Mutex<watch::Receiver<i32>>>>,
+    // 检查中断时跟踪的 last_seen 缓存
+    interrupt_last_seen: i32,
+}
+
+pub struct LedScreenUnit {
+    stb: Pin,
+    clk: Pin,
+    dio: Pin,
 }
 
 impl LedScreen {
-    /// backend = "auto" | "cdev" | "sysfs"
-    /// gpio_base = "auto" | "<number>"
-    pub fn new(backend: &str, gpio_base: &str) -> Result<Self> {
-        use gpiocdev::line::Value;
-        let bus = match backend.trim() {
-            "cdev" => Self::open_cdev()?,
-            "sysfs" => Self::open_sysfs(gpio_base)?,
-            _ => match Self::open_cdev() {
-                Ok(b) => b,
-                Err(e) => {
-                    println!("⚠️  [GPIO] cdev 后端不可用 ({}), 回退 sysfs", e);
-                    Self::open_sysfs(gpio_base)?
-                }
-            },
-        };
-        let mut s = Self { bus };
-        s.set_show_model()?;
-        s.set_data_model()?;
-        Ok(s)
+    pub fn new(stb_left: u64, stb_right: u64, clk: u64, dio: u64) -> Result<Self> {
+        Self::new_with_mask(stb_left, stb_right, clk, dio, 0)
     }
 
-    fn open_cdev() -> Result<GpioBus> {
-        use gpiocdev::line::Value;
-        let chip = find_main_chip().ok_or_else(|| anyhow!("没有 /dev/gpiochip* 字符设备"))?;
+    pub fn new_with_mask(
+        stb_left: u64, stb_right: u64, clk: u64, dio: u64,
+        disabled_led_mask: u8,
+    ) -> Result<Self> {
+        let left_screen = LedScreenUnit::new(stb_left, clk, dio)?;
+        let right_screen = LedScreenUnit::new(stb_right, clk, dio)?;
 
-        // ✅ 修复: gpiocdev 0.7 正确入口是 gpiocdev::Request::builder()
-        //         之前写 gpiocdev::Builder::new() → E0433 (Builder 不在根命名空间)
-        let req = gpiocdev::Request::builder()
-            .on_chip(&chip)
-            .with_consumer("athena-led")
-            .with_lines(&[PIN_STB_LEFT, PIN_STB_RIGHT, PIN_CLK, PIN_DIO])
-            .as_output(Value::Inactive)
-            .request()
-            .with_context(|| format!("请求字符设备 {} 的屏幕引脚失败", chip.display()))?;
+        let mut screen = Self {
+            left_screen,
+            right_screen,
+            disabled_led_mask,
+            interrupt_rx: None,
+            interrupt_last_seen: 0,
+        };
 
-        println!("🔌 [GPIO] cdev 后端: {}", chip.display());
-        Ok(GpioBus::Cdev { req })
+        screen.set_show_model()?;
+        screen.set_data_model()?;
+
+        Ok(screen)
     }
 
-    fn open_sysfs(gpio_base: &str) -> Result<GpioBus> {
-        let base: u64 = match gpio_base.trim() {
-            "" | "auto" => detect_gpio_base(),
-            s => match s.parse::<u64>() {
-                Ok(n) => n,
-                Err(_) => {
-                    println!("⚠️  [GPIO] gpio-base '{}' 解析失败, 改为自动探测", s);
-                    detect_gpio_base()
-                }
-            },
-        };
-        let make = |off: u32, name: &str| -> Result<sysfs_gpio::Pin> {
-            let num = base + off as u64;
-            let p = sysfs_gpio::Pin::new(num);
-            p.export().with_context(|| format!("导出 GPIO{} ({}) 失败", num, name))?;
-            p.set_direction(sysfs_gpio::Direction::Out)
-                .with_context(|| format!("GPIO{} ({}) 设置 out 方向失败", num, name))?;
-            Ok(p)
-        };
-        let sl = make(PIN_STB_LEFT,  "STB_L")?;
-        let sr = make(PIN_STB_RIGHT, "STB_R")?;
-        let ck = make(PIN_CLK,       "CLK")?;
-        let di = make(PIN_DIO,       "DIO")?;
-        println!(
-            "🔌 [GPIO] sysfs 后端 base={} (引脚 {}/{}/{}/{})",
-            base,
-            base + PIN_STB_LEFT as u64, base + PIN_STB_RIGHT as u64,
-            base + PIN_CLK as u64,      base + PIN_DIO as u64
-        );
-        Ok(GpioBus::Sysfs { stb_l: sl, stb_r: sr, clk: ck, dio: di })
+    /// 绑定按键 watch channel, 后续 flow/滚动 会在每帧检查按键中断
+    pub fn bind_interrupt_rx(&mut self, rx: Arc<Mutex<watch::Receiver<i32>>>) {
+        self.interrupt_last_seen = *rx.lock().unwrap().borrow();
+        self.interrupt_rx = Some(rx);
+    }
+
+    /// 检查是否有待处理按键/息屏指令.
+    /// 返回 Some(cmd) 表示有新命令: -1=息屏, >0=切台, None=无
+    pub fn poll_interrupt(&mut self) -> Option<i32> {
+        let rx = self.interrupt_rx.as_ref()?;
+        let guard = rx.lock().ok()?;
+        let current = *(*guard).borrow();
+        if current != self.interrupt_last_seen {
+            self.interrupt_last_seen = current;
+            if current == 0 { return None; }
+            return Some(current);
+        }
+        None
     }
 
     pub fn set_show_model(&mut self) -> Result<()> {
-        self.unit_write(Line::StbLeft,  COMMAND1, &[])?;
-        self.unit_write(Line::StbRight, COMMAND1, &[])?;
+        self.left_screen.set_show_model()?;
+        self.right_screen.set_show_model()?;
         Ok(())
     }
 
     pub fn set_data_model(&mut self) -> Result<()> {
-        self.unit_write(Line::StbLeft,  COMMAND2, &[])?;
-        self.unit_write(Line::StbRight, COMMAND2, &[])?;
+        self.left_screen.set_data_model()?;
+        self.right_screen.set_data_model()?;
         Ok(())
     }
 
     pub fn power(&mut self, run: bool, light_level: u8) -> Result<()> {
-        let cmd = if run {
-            (light_level << 5 >> 5 | 0b11111000) & 0b10001111
-        } else { 0b10000000 };
-        self.unit_write(Line::StbLeft,  cmd, &[])?;
-        self.unit_write(Line::StbRight, cmd, &[])?;
+        self.left_screen.power(run, light_level)?;
+        self.right_screen.power(run, light_level)?;
         Ok(())
     }
 
-    /// 写入字符串 (异步: 长文本 flow() 内部 tokio::sleep 不阻塞按键)
-    pub async fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
-        let mut data: Vec<u8> = Vec::new();
-        let s = std::str::from_utf8(text).unwrap_or("");
-        for ch in s.chars() {
-            let key = ch.to_ascii_uppercase();
+pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
+        let mut display_data = Vec::new();
+        
+        // [核心修复] 
+        // 1. 尝试把字节流转成 UTF-8 字符串
+        // 2. 按【字符】(chars) 遍历，而不是按字节
+        // 这样 '℃'、'☀' 这种多字节符号才能被正确识别！
+        let content = std::str::from_utf8(text).unwrap_or("");
+        
+        for ch in content.chars() {
+            // 统一转大写匹配 (兼容 a-z)
+            let key = ch.to_ascii_uppercase(); 
+            
             if let Some(bytes) = CHAR_DICT.get(&key) {
-                data.extend_from_slice(bytes);
-                data.push(0x00); // 字间距
+                display_data.extend_from_slice(bytes);
+                // 统一加 1 列间距
+                display_data.push(0x00); 
             }
         }
-        // ★ 修复: 砍掉最后一个多余空格, 刚好 27 列不触发滚动
-        if data.last() == Some(&0x00) { data.pop(); }
 
-        if data.len() > 27 { self.flow(&data, status).await?; }
-        else               { self.static_display(&data, status)?; }
+        if display_data.len() > 27 {
+            self.flow(&display_data, status)?;
+        } else {
+            self.static_display(&display_data, status)?;
+        }
         Ok(())
     }
 
-    async fn flow(&mut self, data: &[u8], status: u8) -> Result<()> {
-        let mut start = 0usize;
+    fn flow(&mut self, data: &[u8], status: u8) -> Result<()> {
+        // 进入滚动前同步 last_seen, 避免之前已消费的按键误触发中断
+        // 只有 flow 期间新发生的按键才应该中断滚动
+        if let Some(rx) = &self.interrupt_rx {
+            if let Ok(guard) = rx.lock() {
+                self.interrupt_last_seen = *(*guard).borrow();
+            }
+        }
+        let mut start = 0;
         for i in 1..=data.len() {
-            let mut win = [0u8; 27];
-            if i > 27 { start += 1; }
-            let end = i.min(27);
-            win[..end].copy_from_slice(&data[start..start + end]);
-            self.do_write(&win, status)?;
-            // ★ 修复: tokio 异步睡眠代替 std::thread::sleep, 不阻塞 tokio 线程池
-            tokio::time::sleep(Duration::from_millis(128)).await;
-        }
-        Ok(())
-    }
-
-    pub async fn play_animation(&mut self, file: &str, dur: u64, status: u8) -> Result<()> {
-        let path = format!("/etc/athena_led/anim/{}", file);
-        let meta = fs::metadata(&path).ok();
-        if let Some(m) = &meta {
-            if m.len() > 5 * 1024 * 1024 {
-                eprintln!("❌ 动画 > 5MB: {}", path);
-                return self.static_display(b"TOO LARGE", status);
+            let mut off = [0u8; 27];
+            if i > 27 {
+                start += 1;
             }
-        }
-        let bytes = match fs::read(&path) {
-            Ok(b) => b,
-            Err(e) => {
-                eprintln!("❌ 动画文件读取失败 {}: {}", path, e);
-                return self.static_display(b"FILE ERR", status);
-            }
-        };
-        let n_frames = bytes.len() / 27;
-        if n_frames == 0 { return Ok(()); }
+            off[..i.min(27)].copy_from_slice(&data[start..start + i.min(27)]);
+            self.do_write_data(&off, status)?;
 
-        let deadline = Instant::now() + Duration::from_secs(dur);
-        let mut it = bytes.chunks_exact(27).cycle();
-        while Instant::now() < deadline {
-            if let Some(f) = it.next() { self.do_write(f, status)?; }
-            tokio::time::sleep(Duration::from_millis(66)).await;
+            // 滚动期间检查按键中断 (短按切台/长按息屏/双击), 有按键立即退出滚动
+            if self.poll_interrupt().is_some() {
+                return Ok(());
+            }
+            // 把 128ms 拆成小段轮询, 提高按键响应灵敏度 (20ms 内即可打断)
+            let mut slept = 0u64;
+            while slept < 128 {
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                slept += 20;
+                if self.poll_interrupt().is_some() {
+                    return Ok(());
+                }
+            }
         }
         Ok(())
     }
 
     fn static_display(&mut self, data: &[u8], status: u8) -> Result<()> {
-        let mut buf = [0u8; 27];
+        let mut display_data = [0u8; 27];
         if data.len() < 27 {
-            let o = (27 - data.len()) / 2;
-            buf[o..o + data.len()].copy_from_slice(data);
+            let offset = (27 - data.len()) / 2;
+            display_data[offset..offset + data.len()].copy_from_slice(data);
         } else {
-            buf.copy_from_slice(&data[..27]);
+            display_data[..27].copy_from_slice(&data[..27]);
         }
-        self.do_write(&buf, status)?;
+        self.do_write_data(&display_data, status)?;
         Ok(())
     }
 
-    fn do_write(&mut self, values: &[u8], status: u8) -> Result<()> {
-        let left: Vec<u8> = values[..14].to_vec();
-        self.unit_write(Line::StbLeft,  COMMAND3, &left)?;
-        let mut right: Vec<u8> = values[14..27].to_vec();
-        right.push(status);
-        self.unit_write(Line::StbRight, COMMAND3, &right)?;
+    fn do_write_data(&mut self, values: &[u8], status: u8) -> Result<()> {
+        self.left_screen.printf(&values[..14])?;
+        let mut right_data = values[14..27].to_vec();
+        // 4 盏独立状态 LED: 用 disabled_led_mask 清除用户选择关闭的位
+        // disabled_led_mask 上 1 表示关闭，所以取反后按位与
+        let filtered_status = status & !self.disabled_led_mask;
+        right_data.push(filtered_status);
+        self.right_screen.printf(&right_data)?;
+        Ok(())
+    }
+}
+
+impl LedScreenUnit {
+    fn new(stb: u64, clk: u64, dio: u64) -> Result<Self> {
+        let stb_pin = Pin::new(stb);
+        let clk_pin = Pin::new(clk);
+        let dio_pin = Pin::new(dio);
+
+        stb_pin.export()?;
+        clk_pin.export()?;
+        dio_pin.export()?;
+
+        stb_pin.set_direction(Direction::Out)?;
+        clk_pin.set_direction(Direction::Out)?;
+        dio_pin.set_direction(Direction::Out)?;
+
+        Ok(Self {
+            stb: stb_pin,
+            clk: clk_pin,
+            dio: dio_pin,
+        })
+    }
+
+    fn set_show_model(&mut self) -> Result<()> {
+        self.do_write_data(COMMAND1, &[])?;
         Ok(())
     }
 
-    fn unit_write(&mut self, stb: Line, cmd: u8, vals: &[u8]) -> Result<()> {
-        self.bus.set(stb, LOW)?;
-        self.write_byte_cmd(cmd)?;
-        for (i, &v) in vals.iter().enumerate() {
-            self.write_byte_data(v, i % 2 != 0)?;
+    fn set_data_model(&mut self) -> Result<()> {
+        self.do_write_data(COMMAND2, &[])?;
+        Ok(())
+    }
+
+    fn power(&mut self, run: bool, light_level: u8) -> Result<()> {
+        let command = if run {
+            (light_level << 5 >> 5 | 0b11111000) & 0b10001111
+        } else {
+            0b10000000
+        };
+        self.do_write_data(command, &[])?;
+        Ok(())
+    }
+
+    fn printf(&mut self, values: &[u8]) -> Result<()> {
+        self.do_write_data(COMMAND3, values)?;
+        Ok(())
+    }
+
+    fn do_write_data(&mut self, command: u8, values: &[u8]) -> Result<()> {
+        self.stb.set_value(LOW)?;
+        self.write_command_byte(command)?;
+        
+        for (i, &value) in values.iter().enumerate() {
+            self.write_data_byte(value, i % 2 != 0)?;
         }
-        self.bus.set(stb, HIGH)?;
+        
+        self.stb.set_value(HIGH)?;
         Ok(())
     }
 
-    fn write_byte_cmd(&mut self, v: u8) -> Result<()> {
-        for i in 0..8 { self.write_bit((v >> i) & 1)?; }
+    fn write_command_byte(&mut self, value: u8) -> Result<()> {
+        for i in 0..8 {
+            let bit = (value >> i) & 0x01;
+            self.write_bit(bit)?;
+        }
         Ok(())
     }
 
-    fn write_byte_data(&mut self, v: u8, fill: bool) -> Result<()> {
-        for i in 0..5 { self.write_bit((v >> i) & 1)?; }
-        if fill { for _ in 0..6 { self.write_bit(LOW)?; } }
+    fn write_data_byte(&mut self, value: u8, fill_data: bool) -> Result<()> {
+        for i in 0..5 {
+            let bit = (value >> i) & 0x01;
+            self.write_bit(bit)?;
+        }
+        
+        if fill_data {
+            for _ in 0..6 {
+                self.write_bit(LOW)?;
+            }
+        }
         Ok(())
     }
 
-    fn write_bit(&mut self, b: u8) -> Result<()> {
-        self.bus.set(Line::Clk, LOW)?;
-        self.bus.set(Line::Dio, b)?;
-        self.bus.set(Line::Clk, HIGH)?;
+    fn write_bit(&mut self, bit: u8) -> Result<()> {
+        self.clk.set_value(LOW)?;
+        self.dio.set_value(bit)?;
+        self.clk.set_value(HIGH)?;
         Ok(())
     }
+}
+
+impl Drop for LedScreenUnit {
+    fn drop(&mut self) {
+        let _ = self.stb.unexport();
+        let _ = self.clk.unexport();
+        let _ = self.dio.unexport();
+    }
+}
+
+// ==========================================
+// 🌟 辅助函数：自动探测主控芯片 GPIO base
+// 扫描 /sys/class/gpio/gpiochip*/ 找出 TLMM/pinctrl 芯片
+// ==========================================
+#[cfg(unix)]
+pub fn detect_gpio_base() -> u64 {
+    use std::fs;
+
+    let mut best: Option<(u64, u64, bool)> = None;
+
+    if let Ok(entries) = fs::read_dir("/sys/class/gpio") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with("gpiochip") {
+                continue;
+            }
+            let path = entry.path();
+            let read_num = |file: &str| -> Option<u64> {
+                fs::read_to_string(path.join(file))
+                    .ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+            };
+
+            let base = match read_num("base") {
+                Some(b) => b,
+                None => continue,
+            };
+            let ngpio = read_num("ngpio").unwrap_or(0);
+            let label = fs::read_to_string(path.join("label"))
+                .unwrap_or_default()
+                .trim()
+                .to_lowercase();
+            let is_main = label.contains("pinctrl") || label.contains("tlmm");
+
+            let better = match &best {
+                None => true,
+                Some((_, best_n, best_main)) => {
+                    (is_main && !best_main) || (is_main == *best_main && ngpio > *best_n)
+                }
+            };
+            if better {
+                best = Some((base, ngpio, is_main));
+            }
+        }
+    }
+
+    match best {
+        Some((base, ngpio, _)) => {
+            println!("🔍 [GPIO] 自动探测到主控芯片 base={} (ngpio={})", base, ngpio);
+            base
+        }
+        None => {
+            println!("⚠️ [GPIO] 未能探测到 gpiochip，回退默认 base=512");
+            512
+        }
+    }
+}
+
+#[cfg(not(unix))]
+pub fn detect_gpio_base() -> u64 {
+    512
+}
+
+// ==========================================
+// 🌟 辅助函数：查找主控芯片的字符设备路径 /dev/gpiochipN
+// 优先选 label 含 pinctrl/tlmm 的芯片
+// ==========================================
+#[cfg(unix)]
+pub fn find_main_chip() -> Option<std::path::PathBuf> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let mut best: Option<(PathBuf, u32, bool)> = None;
+
+    if let Ok(entries) = fs::read_dir("/dev") {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            if !name.starts_with("gpiochip") {
+                continue;
+            }
+            let path = entry.path();
+            let info = match gpiocdev::Chip::from_path(&path).and_then(|c| c.info()) {
+                Ok(i) => i,
+                Err(_) => continue,
+            };
+            let label = info.label.to_lowercase();
+            let is_main = label.contains("pinctrl") || label.contains("tlmm");
+
+            let better = match &best {
+                None => true,
+                Some((_, best_n, best_main)) => {
+                    (is_main && !best_main) || (is_main == *best_main && info.num_lines > *best_n)
+                }
+            };
+            if better {
+                best = Some((path, info.num_lines, is_main));
+            }
+        }
+    }
+
+    best.map(|(p, n, _)| {
+        println!("🔍 [GPIO] 找到主控字符设备: {} (lines={})", p.display(), n);
+        p
+    })
+}
+
+#[cfg(not(unix))]
+pub fn find_main_chip() -> Option<std::path::PathBuf> {
+    None
 }

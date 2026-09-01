@@ -87,7 +87,6 @@ return L.view.extend({
 		s.tab('custom', _('Custom Content'));
 		s.tab('sleep', _('Scheduled Sleep'));
 		s.tab('button', _('Button Settings'));
-		s.tab('gpio', _('GPIO Advanced'));
 		s.tab('led', _('LED Indicators'));
 		s.tab('service', _('Service Control'));
 
@@ -146,19 +145,6 @@ return L.view.extend({
 		o.value('http://ifconfig.me/ip', 'ifconfig.me');
 		o.value('http://ipv4.icanhazip.com', 'icanhazip.com');
 		o.default = 'http://checkip.amazonaws.com';
-
-		// ★ 网络请求缓存间隔 (核心新增)
-		o = s.taboption('network', form.ListValue, 'http_cache_secs', _('Network Cache Interval'));
-		o.description = _('How often the background agent refreshes weather/WAN-IP/stock/custom-HTTP. Higher values reduce API ban risk.');
-		o.value('60',   _('1 minute (realtime)'));
-		o.value('120',  _('2 minutes'));
-		o.value('300',  _('5 minutes (Recommended)'));
-		o.value('600',  _('10 minutes'));
-		o.value('900',  _('15 minutes'));
-		o.value('1800', _('30 minutes'));
-		o.value('3600', _('1 hour'));
-		o.default = '300';
-		o.datatype = 'and(uinteger, min(10))';
 
 		// ================= SENSOR =================
 		o = s.taboption('sensor', form.MultiValue, 'temp_sensors', _('Temperature Sensors'));
@@ -249,37 +235,6 @@ return L.view.extend({
 		o.value('restart_network', _('Restart Network'));
 		o.value('restart_wifi', _('Restart Wi-Fi'));
 		o.value('restart_athena', _('Restart Athena LED'));
-
-		// ================= GPIO ADVANCED (新增, 兼容 base≠512 的固件) =================
-		o = s.taboption('gpio', form.ListValue, 'gpio_backend', _('GPIO Backend'));
-		o.description = _('How to drive the screen GPIOs. Character device (/dev/gpiochipN) is faster and preferred; sysfs works on older kernels.');
-		o.value('auto',  _('Auto (try cdev first, fallback to sysfs) — Recommended'));
-		o.value('cdev',  _('Character Device /dev/gpiochipN (kernel 5.5+)'));
-		o.value('sysfs', _('Legacy sysfs /sys/class/gpio (all kernels)'));
-		o.default = 'auto';
-
-		o = s.taboption('gpio', form.ListValue, 'gpio_base', _('GPIO Base (sysfs only)'));
-		o.description = _('Used by sysfs backend to convert pin offsets into global numbers. Auto-detect should always be correct unless you know what you are doing.');
-		o.value('auto', _('Auto-detect — Recommended'));
-		o.value('512',  '512 (Kernel 6.x / iStoreOS default)');
-		o.value('432',  '432 (Kernel 5.4 / QWRT default)');
-		o.value('0',    '0 (Linux 5.10 special)');
-		o.default = 'auto';
-		o.depends('gpio_backend', 'auto');  // cdev 也保留 (方便回退路径查看)
-
-		o = s.taboption('gpio', form.Value, 'button_gpio_verify', _('Button GPIO Offset'));
-		o.datatype = 'uinteger';
-		o.default = '71';
-		o.description = _('Confirmation view of the screen button GPIO offset (AX6600 = 71). Change on the Button tab.');
-		o.readonly = true;
-		// 保持和 Button tab 一致: 从 button_gpio 拉值 (readonly 提示)
-		o = s.taboption('gpio', form.DummyValue, '_gpio_help', _('Firmware Compatibility Notes'));
-		o.rawhtml = true;
-		o.value = '<ul style="line-height:1.8;margin:0">' +
-			'<li>iStoreOS (kernel 6.x): gpio_base=512, Auto works</li>' +
-			'<li>QWRT (kernel 5.4) : gpio_base=432, switch Backend to Auto if screen is blank</li>' +
-			'<li>If screen does not light up after a firmware swap, toggle Backend to <b>sysfs</b> and base to <b>432</b> then restart service.</li>' +
-			'</ul>';
 
 		// ================= LED INDICATORS =================
 		o = s.taboption('led', form.Flag, 'disable_led_clock', _('Disable Clock LED (Status 1)'));
