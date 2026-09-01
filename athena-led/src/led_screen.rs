@@ -3,6 +3,7 @@ use sysfs_gpio::{Direction, Pin};
 use crate::char_dict::CHAR_DICT;
 use tokio::sync::watch;
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 
 const LOW: u8 = 0x00;
 const HIGH: u8 = 0x01;
@@ -15,9 +16,8 @@ const COMMAND3: u8 = 0b11000000;
 // GPIO 后端抽象：cdev 字符设备（优先）/ sysfs_gpio（回退）
 // ==========================================
 pub enum GpioBackend {
-    #[cfg(unix)]
-    Cdev(gpiocdev::Chip),
-    Sysfs(u64),
+    Cdev(PathBuf),  // /dev/gpiochipN 路径
+    Sysfs(u64),     // TLMM base
 }
 
 pub enum GpioLine {
@@ -28,30 +28,19 @@ pub enum GpioLine {
 
 #[cfg(unix)]
 impl GpioLine {
-    pub fn set_output(&mut self) -> Result<()> {
-        match self {
-            GpioLine::Sysfs(pin) => {
-                pin.export()?;
-                pin.set_direction(Direction::Out)?;
-                Ok(())
-            }
-            GpioLine::Cdev(_) => Ok(()),
-        }
-    }
-
     pub fn set_value(&mut self, val: u8) -> Result<()> {
         match self {
             GpioLine::Sysfs(pin) => pin.set_value(val)?,
-            GpioLine::Cdev(req) => req.set_value(gpiocdev::line::Value::from_u8(val))?,
+            GpioLine::Cdev(req) => {
+                let v = if val != 0 {
+                    gpiocdev::line::Value::Active
+                } else {
+                    gpiocdev::line::Value::Inactive
+                };
+                req.set_value(gpiocdev::Offset(0), v)?;
+            }
         }
         Ok(())
-    }
-
-    pub fn is_low(&mut self) -> Result<bool> {
-        match self {
-            GpioLine::Sysfs(pin) => Ok(pin.get_value()? == LOW),
-            GpioLine::Cdev(req) => Ok(matches!(req.get_value()?, gpiocdev::line::Value::Inactive)),
-        }
     }
 }
 
@@ -224,13 +213,9 @@ impl LedScreenUnit {
     #[cfg(unix)]
     fn new(stb_offset: u64, clk_offset: u64, dio_offset: u64) -> Result<Self> {
         let backend = detect_gpio_backend();
-        let mut stb = create_line(stb_offset, &backend)?;
-        let mut clk = create_line(clk_offset, &backend)?;
-        let mut dio = create_line(dio_offset, &backend)?;
-
-        stb.set_output()?;
-        clk.set_output()?;
-        dio.set_output()?;
+        let stb = create_line(stb_offset, &backend)?;
+        let clk = create_line(clk_offset, &backend)?;
+        let dio = create_line(dio_offset, &backend)?;
 
         Ok(Self { stb, clk, dio })
     }
@@ -349,7 +334,7 @@ pub fn detect_gpio_base() -> u64 {
             let better = match &best {
                 None => true,
                 Some((_, best_n, best_main)) => {
-                    (is_main && !best_main) || (is_main == *best_main && nggpio > *best_n)
+                    (is_main && !best_main) || (is_main == *best_main && ngpio > *best_n)
                 }
             };
             if better {
@@ -428,10 +413,8 @@ pub fn find_main_chip() -> Option<std::path::PathBuf> {
 #[cfg(unix)]
 fn detect_gpio_backend() -> GpioBackend {
     if let Some(chip_path) = find_main_chip() {
-        if let Ok(chip) = gpiocdev::Chip::from_path(&chip_path) {
-            println!("✅ [GPIO] 使用 cdev 字符设备后端");
-            return GpioBackend::Cdev(chip);
-        }
+        println!("✅ [GPIO] 使用 cdev 字符设备后端");
+        return GpioBackend::Cdev(chip_path);
     }
     let base = detect_gpio_base();
     println!("⚠️ [GPIO] cdev 不可用，回退 sysfs_gpio (base={})", base);
@@ -441,12 +424,12 @@ fn detect_gpio_backend() -> GpioBackend {
 #[cfg(unix)]
 fn create_line(offset: u64, backend: &GpioBackend) -> Result<GpioLine> {
     match backend {
-        GpioBackend::Cdev(chip) => {
+        GpioBackend::Cdev(chip_path) => {
             gpiocdev::Request::builder()
-                .on_chip(chip.clone())
+                .on_chip(chip_path.as_ref())
                 .with_consumer("athena-led")
                 .with_line(offset as u32)
-                .as_output()
+                .as_output(gpiocdev::line::Value::Inactive)
                 .request()
                 .map(GpioLine::Cdev)
                 .map_err(|e| anyhow::anyhow!("cdev request line {} failed: {}", offset, e))
@@ -454,6 +437,8 @@ fn create_line(offset: u64, backend: &GpioBackend) -> Result<GpioLine> {
         GpioBackend::Sysfs(base) => {
             let global = base + offset;
             let pin = Pin::new(global);
+            pin.export()?;
+            pin.set_direction(Direction::Out)?;
             Ok(GpioLine::Sysfs(pin))
         }
     }
