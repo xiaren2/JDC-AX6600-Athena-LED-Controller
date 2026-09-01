@@ -22,6 +22,7 @@ return L.view.extend({
 			'uci set athena_led.general.temp_sensors="0 1 2 3 4"; ' +
 			'uci set athena_led.general.enable_sleep=0; ' +
 			'uci set athena_led.general.http_length=15; ' +
+			'uci set athena_led.general.cache_ttl=1800; ' +
 			'uci set athena_led.general.button_gpio=71; ' +
 			'uci set athena_led.general.enable_mesh_button=0; ' +
 			'uci set athena_led.general.mesh_button_gpio=72; ' +
@@ -175,6 +176,11 @@ return L.view.extend({
 		o = s.taboption('sensor', form.ListValue, 'weather_format', _('Weather Format'));
 		o.value('simple', _('Simple (Icon + Temp)'));
 		o.value('full', _('Full (Original)'));
+
+		o = s.taboption('sensor', form.Value, 'cache_ttl', _('Cache TTL (seconds)'));
+		o.datatype = 'uinteger';
+		o.default = '1800';
+		o.description = _('How often to refresh weather/IP/HTTP cache in seconds. Set higher (e.g. 900/1800/3600) to reduce API requests and avoid being rate-limited.');
 
 		// ================= CUSTOM =================
 		o = s.taboption('custom', form.Value, 'custom_content', _('Custom Text'));

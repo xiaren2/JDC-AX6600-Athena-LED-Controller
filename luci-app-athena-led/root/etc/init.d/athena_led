@@ -24,7 +24,8 @@ start_service() {
           weatherCity weatherSource seniverseKey tempFlag \
           enableSleep sleepStart sleepEnd \
           buttonGpio enableMeshButton meshButtonGpio meshShortAction meshLongAction \
-          disableLedClock disableLedMedal disableLedUp disableLedDown
+          disableLedClock disableLedMedal disableLedUp disableLedDown \
+          cacheTtl
 
     # 基础配置
     config_get seconds "$cfg" 'duration' '5'
@@ -40,6 +41,7 @@ start_service() {
     config_get weatherFormat "$cfg" 'weather_format' 'simple'
     config_get seniverseKey "$cfg" 'seniverse_key' ''
     config_get tempFlag "$cfg" 'temp_sensors' '0 1 2 3 4'
+    config_get cacheTtl "$cfg" 'cache_ttl' '1800'
 
     # 定时配置
     config_get_bool enableSleep "$cfg" 'enable_sleep' '0'
@@ -83,6 +85,7 @@ start_service() {
     procd_append_param command --seniverse-key "$seniverseKey"
     procd_append_param command --weather-format "$weatherFormat"
     procd_append_param command --temp-flag "$tempFlag"
+    procd_append_param command --cache-ttl "$cacheTtl"
     
     # 定时参数 (必须在 close_instance 之前添加！)
     procd_append_param command --sleep-start "$sleepStart"

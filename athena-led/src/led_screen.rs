@@ -7,27 +7,78 @@ use std::sync::{Arc, Mutex};
 const LOW: u8 = 0x00;
 const HIGH: u8 = 0x01;
 
-// Display mode commands
-const COMMAND1: u8 = 0b00000011; // Display mode
-const COMMAND2: u8 = 0b01000000; // Data mode
-const COMMAND3: u8 = 0b11000000; // Display address
+const COMMAND1: u8 = 0b00000011;
+const COMMAND2: u8 = 0b01000000;
+const COMMAND3: u8 = 0b11000000;
 
+// ==========================================
+// GPIO 后端抽象：cdev 字符设备（优先）/ sysfs_gpio（回退）
+// ==========================================
+pub enum GpioBackend {
+    #[cfg(unix)]
+    Cdev(gpiocdev::Chip),
+    Sysfs(u64),
+}
+
+pub enum GpioLine {
+    #[cfg(unix)]
+    Cdev(gpiocdev::Request),
+    Sysfs(Pin),
+}
+
+#[cfg(unix)]
+impl GpioLine {
+    pub fn set_output(&mut self) -> Result<()> {
+        match self {
+            GpioLine::Sysfs(pin) => {
+                pin.export()?;
+                pin.set_direction(Direction::Out)?;
+                Ok(())
+            }
+            GpioLine::Cdev(_) => Ok(()),
+        }
+    }
+
+    pub fn set_value(&mut self, val: u8) -> Result<()> {
+        match self {
+            GpioLine::Sysfs(pin) => pin.set_value(val)?,
+            GpioLine::Cdev(req) => req.set_value(gpiocdev::line::Value::from_u8(val))?,
+        }
+        Ok(())
+    }
+
+    pub fn is_low(&mut self) -> Result<bool> {
+        match self {
+            GpioLine::Sysfs(pin) => Ok(pin.get_value()? == LOW),
+            GpioLine::Cdev(req) => Ok(matches!(req.get_value()?, gpiocdev::line::Value::Inactive)),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for GpioLine {
+    fn drop(&mut self) {
+        if let GpioLine::Sysfs(pin) = self {
+            let _ = pin.unexport();
+        }
+    }
+}
+
+// ==========================================
+// LedScreen 主体
+// ==========================================
 pub struct LedScreen {
     left_screen: LedScreenUnit,
     right_screen: LedScreenUnit,
-    // 禁用 LED 掩码: bit0=时钟 bit1=奖牌 bit2=上箭头 bit3=下箭头
-    // 1 = 禁用 (用户勾选了关闭), 0 = 正常
     disabled_led_mask: u8,
-    // 可选: 按键 watch channel. 存在时, flow() 滚动显示每帧都会检查按键中断
     interrupt_rx: Option<Arc<Mutex<watch::Receiver<i32>>>>,
-    // 检查中断时跟踪的 last_seen 缓存
     interrupt_last_seen: i32,
 }
 
 pub struct LedScreenUnit {
-    stb: Pin,
-    clk: Pin,
-    dio: Pin,
+    stb: GpioLine,
+    clk: GpioLine,
+    dio: GpioLine,
 }
 
 impl LedScreen {
@@ -56,14 +107,11 @@ impl LedScreen {
         Ok(screen)
     }
 
-    /// 绑定按键 watch channel, 后续 flow/滚动 会在每帧检查按键中断
     pub fn bind_interrupt_rx(&mut self, rx: Arc<Mutex<watch::Receiver<i32>>>) {
         self.interrupt_last_seen = *rx.lock().unwrap().borrow();
         self.interrupt_rx = Some(rx);
     }
 
-    /// 检查是否有待处理按键/息屏指令.
-    /// 返回 Some(cmd) 表示有新命令: -1=息屏, >0=切台, None=无
     pub fn poll_interrupt(&mut self) -> Option<i32> {
         let rx = self.interrupt_rx.as_ref()?;
         let guard = rx.lock().ok()?;
@@ -94,24 +142,22 @@ impl LedScreen {
         Ok(())
     }
 
-pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
+    pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
         let mut display_data = Vec::new();
-        
-        // [核心修复] 
-        // 1. 尝试把字节流转成 UTF-8 字符串
-        // 2. 按【字符】(chars) 遍历，而不是按字节
-        // 这样 '℃'、'☀' 这种多字节符号才能被正确识别！
+
         let content = std::str::from_utf8(text).unwrap_or("");
-        
+
         for ch in content.chars() {
-            // 统一转大写匹配 (兼容 a-z)
-            let key = ch.to_ascii_uppercase(); 
-            
+            let key = ch.to_ascii_uppercase();
+
             if let Some(bytes) = CHAR_DICT.get(&key) {
                 display_data.extend_from_slice(bytes);
-                // 统一加 1 列间距
-                display_data.push(0x00); 
+                display_data.push(0x00);
             }
+        }
+
+        if !display_data.is_empty() {
+            display_data.pop();
         }
 
         if display_data.len() > 27 {
@@ -123,8 +169,6 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
     }
 
     fn flow(&mut self, data: &[u8], status: u8) -> Result<()> {
-        // 进入滚动前同步 last_seen, 避免之前已消费的按键误触发中断
-        // 只有 flow 期间新发生的按键才应该中断滚动
         if let Some(rx) = &self.interrupt_rx {
             if let Ok(guard) = rx.lock() {
                 self.interrupt_last_seen = *(*guard).borrow();
@@ -139,11 +183,9 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
             off[..i.min(27)].copy_from_slice(&data[start..start + i.min(27)]);
             self.do_write_data(&off, status)?;
 
-            // 滚动期间检查按键中断 (短按切台/长按息屏/双击), 有按键立即退出滚动
             if self.poll_interrupt().is_some() {
                 return Ok(());
             }
-            // 把 128ms 拆成小段轮询, 提高按键响应灵敏度 (20ms 内即可打断)
             let mut slept = 0u64;
             while slept < 128 {
                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -171,8 +213,6 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
     fn do_write_data(&mut self, values: &[u8], status: u8) -> Result<()> {
         self.left_screen.printf(&values[..14])?;
         let mut right_data = values[14..27].to_vec();
-        // 4 盏独立状态 LED: 用 disabled_led_mask 清除用户选择关闭的位
-        // disabled_led_mask 上 1 表示关闭，所以取反后按位与
         let filtered_status = status & !self.disabled_led_mask;
         right_data.push(filtered_status);
         self.right_screen.printf(&right_data)?;
@@ -181,23 +221,28 @@ pub fn write_data(&mut self, text: &[u8], status: u8) -> Result<()> {
 }
 
 impl LedScreenUnit {
-    fn new(stb: u64, clk: u64, dio: u64) -> Result<Self> {
-        let stb_pin = Pin::new(stb);
-        let clk_pin = Pin::new(clk);
-        let dio_pin = Pin::new(dio);
+    #[cfg(unix)]
+    fn new(stb_offset: u64, clk_offset: u64, dio_offset: u64) -> Result<Self> {
+        let backend = detect_gpio_backend();
+        let mut stb = create_line(stb_offset, &backend)?;
+        let mut clk = create_line(clk_offset, &backend)?;
+        let mut dio = create_line(dio_offset, &backend)?;
 
-        stb_pin.export()?;
-        clk_pin.export()?;
-        dio_pin.export()?;
+        stb.set_output()?;
+        clk.set_output()?;
+        dio.set_output()?;
 
-        stb_pin.set_direction(Direction::Out)?;
-        clk_pin.set_direction(Direction::Out)?;
-        dio_pin.set_direction(Direction::Out)?;
+        Ok(Self { stb, clk, dio })
+    }
 
+    #[cfg(not(unix))]
+    fn new(stb_offset: u64, clk_offset: u64, dio_offset: u64) -> Result<Self> {
+        let _ = (stb_offset, clk_offset, dio_offset);
+        println!("📺 [Windows 模拟器] GPIO 后端跳过（空跑）");
         Ok(Self {
-            stb: stb_pin,
-            clk: clk_pin,
-            dio: dio_pin,
+            stb: GpioLine::Sysfs(Pin::new(0)),
+            clk: GpioLine::Sysfs(Pin::new(0)),
+            dio: GpioLine::Sysfs(Pin::new(0)),
         })
     }
 
@@ -229,11 +274,11 @@ impl LedScreenUnit {
     fn do_write_data(&mut self, command: u8, values: &[u8]) -> Result<()> {
         self.stb.set_value(LOW)?;
         self.write_command_byte(command)?;
-        
+
         for (i, &value) in values.iter().enumerate() {
             self.write_data_byte(value, i % 2 != 0)?;
         }
-        
+
         self.stb.set_value(HIGH)?;
         Ok(())
     }
@@ -251,7 +296,7 @@ impl LedScreenUnit {
             let bit = (value >> i) & 0x01;
             self.write_bit(bit)?;
         }
-        
+
         if fill_data {
             for _ in 0..6 {
                 self.write_bit(LOW)?;
@@ -268,17 +313,8 @@ impl LedScreenUnit {
     }
 }
 
-impl Drop for LedScreenUnit {
-    fn drop(&mut self) {
-        let _ = self.stb.unexport();
-        let _ = self.clk.unexport();
-        let _ = self.dio.unexport();
-    }
-}
-
 // ==========================================
-// 🌟 辅助函数：自动探测主控芯片 GPIO base
-// 扫描 /sys/class/gpio/gpiochip*/ 找出 TLMM/pinctrl 芯片
+// GPIO base 自动探测 (sysfs 路径)
 // ==========================================
 #[cfg(unix)]
 pub fn detect_gpio_base() -> u64 {
@@ -303,7 +339,7 @@ pub fn detect_gpio_base() -> u64 {
                 Some(b) => b,
                 None => continue,
             };
-            let ngpio = read_num("ngpio").unwrap_or(0);
+            let ngpio = read_num("nggpio").unwrap_or(read_num("ngpio").unwrap_or(0));
             let label = fs::read_to_string(path.join("label"))
                 .unwrap_or_default()
                 .trim()
@@ -313,7 +349,7 @@ pub fn detect_gpio_base() -> u64 {
             let better = match &best {
                 None => true,
                 Some((_, best_n, best_main)) => {
-                    (is_main && !best_main) || (is_main == *best_main && ngpio > *best_n)
+                    (is_main && !best_main) || (is_main == *best_main && nggpio > *best_n)
                 }
             };
             if better {
@@ -340,8 +376,7 @@ pub fn detect_gpio_base() -> u64 {
 }
 
 // ==========================================
-// 🌟 辅助函数：查找主控芯片的字符设备路径 /dev/gpiochipN
-// 优先选 label 含 pinctrl/tlmm 的芯片
+// 查找主控芯片的字符设备路径 /dev/gpiochipN
 // ==========================================
 #[cfg(unix)]
 pub fn find_main_chip() -> Option<std::path::PathBuf> {
@@ -385,4 +420,51 @@ pub fn find_main_chip() -> Option<std::path::PathBuf> {
 #[cfg(not(unix))]
 pub fn find_main_chip() -> Option<std::path::PathBuf> {
     None
+}
+
+// ==========================================
+// 探测 GPIO 后端并创建单条 GPIO 线
+// ==========================================
+#[cfg(unix)]
+fn detect_gpio_backend() -> GpioBackend {
+    if let Some(chip_path) = find_main_chip() {
+        if let Ok(chip) = gpiocdev::Chip::from_path(&chip_path) {
+            println!("✅ [GPIO] 使用 cdev 字符设备后端");
+            return GpioBackend::Cdev(chip);
+        }
+    }
+    let base = detect_gpio_base();
+    println!("⚠️ [GPIO] cdev 不可用，回退 sysfs_gpio (base={})", base);
+    GpioBackend::Sysfs(base)
+}
+
+#[cfg(unix)]
+fn create_line(offset: u64, backend: &GpioBackend) -> Result<GpioLine> {
+    match backend {
+        GpioBackend::Cdev(chip) => {
+            gpiocdev::Request::builder()
+                .on_chip(chip.clone())
+                .with_consumer("athena-led")
+                .with_line(offset as u32)
+                .as_output()
+                .request()
+                .map(GpioLine::Cdev)
+                .map_err(|e| anyhow::anyhow!("cdev request line {} failed: {}", offset, e))
+        }
+        GpioBackend::Sysfs(base) => {
+            let global = base + offset;
+            let pin = Pin::new(global);
+            Ok(GpioLine::Sysfs(pin))
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn detect_gpio_backend() -> GpioBackend {
+    GpioBackend::Sysfs(512)
+}
+
+#[cfg(not(unix))]
+fn create_line(offset: u64, _backend: &GpioBackend) -> Result<GpioLine> {
+    Ok(GpioLine::Sysfs(Pin::new(offset)))
 }

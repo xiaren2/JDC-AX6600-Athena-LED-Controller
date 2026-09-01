@@ -66,10 +66,12 @@ struct SystemMonitor {
     last_stock_price: f64,
     cached_weather: String, last_weather_time: Instant,
     cached_ip: String, last_ip_time: Instant,
+    cached_http_text: String, last_http_time: Instant,
+    cache_ttl_secs: u64,
 }
 
 impl SystemMonitor {
-    fn new(net_dev: String) -> Result<Self> {
+    fn new(net_dev: String, cache_ttl_secs: u64) -> Result<Self> {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Athena-LED Router)")
             .timeout(Duration::from_secs(30))
@@ -79,8 +81,10 @@ impl SystemMonitor {
             http_client: client, net_interface: net_dev,
             cached_weather: "Wait...".to_string(), last_weather_time: Instant::now() - Duration::from_secs(3600*24),
             cached_ip: "Checking...".to_string(), last_ip_time: Instant::now() - Duration::from_secs(3600*24),
+            cached_http_text: String::new(), last_http_time: Instant::now() - Duration::from_secs(3600*24),
             last_rx_bytes: 0, last_tx_bytes: 0, last_net_check: Instant::now(),
             last_cpu_total: 0, last_cpu_idle: 0, last_stock_price: 0.0,
+            cache_ttl_secs,
         })
     }
     fn init(&mut self) {
@@ -222,10 +226,15 @@ impl SystemMonitor {
         }
         "Dev:0".to_string()
     }
-    pub async fn get_http_text(&self, url: &str, prefix: &str, max_len: usize) -> String {
+    pub async fn get_http_text(&mut self, url: &str, prefix: &str, max_len: usize) -> String {
         if url.is_empty() { return String::new(); }
+        if !self.cached_http_text.is_empty() && !self.cached_http_text.contains("Err") {
+            if self.last_http_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
+                return self.cached_http_text.clone();
+            }
+        }
         let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap_or(self.http_client.clone());
-        match client.get(url).send().await {
+        let result = match client.get(url).send().await {
             Ok(resp) => match resp.text().await {
                 Ok(text) => {
                     let t = text.trim();
@@ -235,10 +244,15 @@ impl SystemMonitor {
                 Err(_) => format!("{}Err", prefix),
             }
             Err(_) => format!("{}Wait", prefix),
+        };
+        if !result.contains("Err") && !result.contains("Wait") {
+            self.cached_http_text = result.clone();
+            self.last_http_time = Instant::now();
         }
+        result
     }
     async fn get_public_ip(&mut self, ip_url: &str) -> String {
-        if self.last_ip_time.elapsed() < Duration::from_secs(3600) {
+        if self.last_ip_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
             if !self.cached_ip.contains("Err") { return self.cached_ip.clone(); }
         }
         let mut new_ip = "IP:Err".to_string();
@@ -276,7 +290,7 @@ impl SystemMonitor {
         ("Err".to_string(), 0)
     }
     async fn get_smart_weather(&mut self, location: &str, source: &str, key: &str) -> String {
-        if self.last_weather_time.elapsed() < Duration::from_secs(1800) {
+        if self.last_weather_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
             if !self.cached_weather.contains("Err") && !self.cached_weather.contains("Wait") {
                 return self.cached_weather.clone();
             }
@@ -422,6 +436,9 @@ struct Args {
     #[arg(long, default_value = "")] sleep_start: String,
     #[arg(long, default_value = "")] sleep_end: String,
     #[arg(long, default_value = "simple")] weather_format: String,
+
+    // 缓存刷新间隔（秒），天气/IP/HTTP/股票统一用此 TTL
+    #[arg(long, default_value_t = 1800)] cache_ttl: u64,
 
     // [按键] GPIO 引脚偏移，AX6600 按键固定为 71
     #[arg(long, default_value = "71")]
@@ -638,12 +655,12 @@ async fn main() -> Result<()> {
     if args.disable_led_down  { disabled_led_mask |= 0x08; }
 
     let mut screen = led_screen::LedScreen::new_with_mask(
-        581, 582, 585, 586, disabled_led_mask,
+        69, 70, 73, 74, disabled_led_mask,
     )
         .context("Failed to init screen")?;
     screen.power(true, args.light_level)?;
 
-    let mut monitor = SystemMonitor::new(args.net_interface.clone())
+    let mut monitor = SystemMonitor::new(args.net_interface.clone(), args.cache_ttl)
         .context("Failed to initialize system monitor")?;
 
     let running = Arc::new(AtomicBool::new(true));
