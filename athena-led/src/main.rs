@@ -543,12 +543,12 @@ fn set_timezone_from_config() -> Result<()> {
                 return Ok(());
             }
             // 映射表没命中, 打个日志方便排查
-            println!("⚠️ [时区] 未知 zonename '{}', 回退 UTC", zn);
+            println!("⚠️ [时区] 未知 zonename '{}', 使用中国时区", zn);
         }
     }
 
-    env::set_var("TZ", "UTC");
-    println!("🌍 [时区] 未找到时区配置, 使用 UTC");
+    env::set_var("TZ", "CST-8");
+    println!("🌍 [时区] 未找到时区配置, 使用 CST-8");
     Ok(())
 }
 
