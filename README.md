@@ -5,6 +5,7 @@
 
 ---
 main更新为js,luci不再更新，luci分支https://github.com/xiaren2/JDC-AX6600-Athena-LED-Controller/tree/luci
+
 在原作者：https://github.com/unraveloop/JDC-AX6600-Athena-LED-Controller  1.0版本 基础上修改，全程由AI进行修改。有疑问请自行修改代码，或者提交Issues
 
 新版apk文件安装方式 apk add --allow-untrusted /tmp/luci-app-athena-led-1.0.5-r1.apk
