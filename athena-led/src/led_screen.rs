@@ -22,7 +22,7 @@ pub enum GpioBackend {
 
 pub enum GpioLine {
     #[cfg(unix)]
-    Cdev(gpiocdev::Request),
+    Cdev(gpiocdev::Request, u32),
     Sysfs(Pin),
 }
 
@@ -31,13 +31,13 @@ impl GpioLine {
     pub fn set_value(&mut self, val: u8) -> Result<()> {
         match self {
             GpioLine::Sysfs(pin) => pin.set_value(val)?,
-            GpioLine::Cdev(req) => {
+            GpioLine::Cdev(req, offset) => {
                 let v = if val != 0 {
                     gpiocdev::line::Value::Active
                 } else {
                     gpiocdev::line::Value::Inactive
                 };
-                req.set_value(gpiocdev::Offset(0), v)?;
+                req.set_value(*offset, v)?;
             }
         }
         Ok(())
@@ -426,7 +426,7 @@ fn create_line(offset: u64, backend: &GpioBackend) -> Result<GpioLine> {
     match backend {
         GpioBackend::Cdev(chip_path) => {
             gpiocdev::Request::builder()
-                .on_chip(chip_path.as_ref())
+                .on_chip(chip_path.clone())
                 .with_consumer("athena-led")
                 .with_line(offset as u32)
                 .as_output(gpiocdev::line::Value::Inactive)
