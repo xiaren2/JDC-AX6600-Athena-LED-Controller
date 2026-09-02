@@ -1,0 +1,356 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+# 运行状态区域
+msgid "Running Status"
+msgstr "运行状态"
+
+msgid "Collecting data..."
+msgstr "正在收集数据..."
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Unknown Error"
+msgstr "未知错误"
+
+msgid "Service restarted successfully."
+msgstr "服务重启成功。"
+
+msgid "Service stopped."
+msgstr "服务已停止。"
+
+msgid "Failed to restart: "
+msgstr "重启失败："
+
+msgid "Failed to stop: "
+msgstr "停止失败："
+
+# 标题与描述
+msgid "Athena LED Controller"
+msgstr "雅典娜 LED 控制器"
+
+msgid "JDCloud AX6600 LED Screen Ctrl"
+msgstr "京东云 AX6600 点阵屏控制"
+
+# 板块 1: 基础设置
+msgid "General Settings"
+msgstr "基础设置"
+
+msgid "Enabled"
+msgstr "启用"
+
+msgid "Brightness Level"
+msgstr "屏幕亮度"
+
+msgid "Adjust brightness (0-7)."
+msgstr "调节屏幕亮度 (0-7)。"
+
+msgid "Loop Interval (s)"
+msgstr "轮播间隔 (秒)"
+
+msgid "Time in seconds to display each module."
+msgstr "每个模块显示的持续时间（秒）。"
+
+msgid "Display Order & Modules"
+msgstr "显示模块与顺序"
+
+msgid "Add modules and drag to reorder."
+msgstr "添加模块并拖拽调整显示顺序。"
+
+# 模块名称
+msgid "Year (YYYY)"
+msgstr "年份 (YYYY)"
+
+msgid "Date (MM-DD)"
+msgstr "日期 (MM-DD)"
+
+msgid "Time (HH:MM)"
+msgstr "时间 (HH:MM)"
+
+msgid "Time (Blink)"
+msgstr "时间 (闪烁效果)"
+
+msgid "System Uptime"
+msgstr "系统运行时间"
+
+msgid "Weather"
+msgstr "当地天气"
+
+msgid "CPU Load"
+msgstr "CPU 占用率"
+
+msgid "RAM Usage"
+msgstr "内存占用率"
+
+msgid "Temperatures"
+msgstr "系统温度"
+
+msgid "WAN IP"
+msgstr "公网 IP"
+
+msgid "Online Devices (ARP)"
+msgstr "在线设备数 (ARP)"
+
+msgid "Realtime Speed (RX)"
+msgstr "实时下载速度 (RX)"
+
+msgid "Realtime Speed (TX)"
+msgstr "实时上传速度 (TX)"
+
+msgid "Total Traffic (RX)"
+msgstr "总下载流量 (RX)"
+
+msgid "Total Traffic (TX)"
+msgstr "总上传流量 (TX)"
+
+msgid "Custom Text"
+msgstr "自定义文本"
+
+msgid "HTTP Request Result"
+msgstr "HTTP 请求结果"
+
+# 板块 2: 网络设置
+msgid "Network Settings"
+msgstr "网络设置"
+
+msgid "Network Interface"
+msgstr "网络接口"
+
+msgid "Interface for traffic monitoring (e.g. br-lan)."
+msgstr "用于流量监控的接口 (例如 br-lan)。"
+
+msgid "WAN IP API"
+msgstr "WAN IP 查询接口"
+
+msgid "Select a preset or enter custom URL."
+msgstr "选择预设或输入自定义 URL。"
+
+# 板块 3: 传感器与天气
+msgid "Sensor & Weather"
+msgstr "传感器与天气"
+
+msgid "Temperature Sensors"
+msgstr "温度传感器"
+
+msgid "Select sensors to cycle through."
+msgstr "选择需要轮播显示的传感器。"
+
+# 传感器名称 (保持原名或简单翻译)
+msgid "nss-top"
+msgstr "NSS-Top"
+
+msgid "nss"
+msgstr "NSS"
+
+msgid "wcss-phya0"
+msgstr "无线 PHY0"
+
+msgid "wcss-phya1"
+msgstr "无线 PHY1"
+
+msgid "cpu"
+msgstr "CPU"
+
+msgid "lpass"
+msgstr "LPASS"
+
+msgid "ddrss"
+msgstr "DDR 内存"
+
+msgid "Weather Source"
+msgstr "天气数据源"
+
+msgid "City Name"
+msgstr "城市名称"
+
+msgid "Pinyin or English."
+msgstr "请输入拼音或英文 (如 Beijing)。"
+
+msgid "Weather Format"
+msgstr "天气显示格式"
+
+msgid "Simple (Icon + Temp)"
+msgstr "简约 (图标+温度)"
+
+msgid "Full (Original)"
+msgstr "完整 (原始格式)"
+
+msgid "Simple mode keeps only the first number to fit screen."
+msgstr "简约模式只保留首个数字以适应屏幕宽度。"
+
+msgid "Seniverse API Key"
+msgstr "心知天气 API 密钥"
+
+# 板块 4: 自定义内容
+msgid "Custom Content"
+msgstr "自定义内容"
+
+msgid "Effective only when 'Custom Text' is added to Display Order."
+msgstr "仅当“自定义文本”被添加到显示顺序时生效。"
+
+msgid "HTTP Request URL"
+msgstr "HTTP 请求地址"
+
+msgid "Effective only when 'HTTP Request Result' is added to Display Order."
+msgstr "仅当“HTTP 请求结果”被添加到显示顺序时生效。"
+
+msgid "HTTP Max Length"
+msgstr "HTTP 最大显示长度"
+
+msgid "Max characters to display (defaults to 15). Set higher for longer text."
+msgstr "最大显示字符数 (默认 15)。如需显示长文本请调大此值。"
+
+# 板块 5: 定时休眠
+msgid "Scheduled Sleep"
+msgstr "定时休眠"
+
+msgid "Enable Scheduled Sleep"
+msgstr "启用定时休眠"
+
+msgid "Screen Off Time"
+msgstr "屏幕关闭时间"
+
+msgid "HH:MM format (e.g. 23:00)."
+msgstr "HH:MM 格式 (例如 23:00)。"
+
+msgid "Screen On Time"
+msgstr "屏幕开启时间"
+
+msgid "HH:MM format (e.g. 07:00)."
+msgstr "HH:MM 格式 (例如 07:00)。"
+
+# 板块 6: 服务控制
+msgid "Service Control"
+msgstr "服务控制"
+
+msgid "Restart Service"
+msgstr "重启服务"
+
+msgid "Force restart the process immediately."
+msgstr "立即强制重启进程。"
+
+msgid "Stop Service"
+msgstr "停止服务"
+
+msgid "Stop the process (Will restart on reboot if Enabled is checked)."
+msgstr "停止进程 (若启用被勾选，重启路由器后会自动启动)。"
+
+# 板块 7: 按键设置
+msgid "Button Settings"
+msgstr "按键设置"
+
+msgid "Screen Button GPIO Pin"
+msgstr "屏幕按键 GPIO 引脚"
+
+msgid "GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware."
+msgstr "屏幕按键的 GPIO 引脚偏移 (AX6600 默认 71)，不同固件可能不同。短按/下一模块，双击/返回第一模块，长按/熄屏"
+
+msgid "Enable Mesh Button"
+msgstr "启用 Mesh 键自定义动作"
+
+msgid "Enable custom action mapping for the Mesh button."
+msgstr "为 Mesh 键启用自定义动作映射。"
+
+msgid "Mesh Button GPIO Pin"
+msgstr "Mesh 键 GPIO 引脚"
+
+msgid "GPIO pin offset for the Mesh button (default 72 for AX6600)."
+msgstr "Mesh 键的 GPIO 引脚偏移 (AX6600 默认 72)。"
+
+msgid "Mesh Short Press Action"
+msgstr "Mesh 短按动作"
+
+msgid "Mesh Long Press Action"
+msgstr "Mesh 长按动作"
+
+msgid "None"
+msgstr "无"
+
+msgid "Reboot Router"
+msgstr "重启路由器"
+
+msgid "Restart Network"
+msgstr "重启网络"
+
+msgid "Restart Wi-Fi"
+msgstr "重启 Wi-Fi"
+
+msgid "Restart Athena LED"
+msgstr "重启 Athena LED"
+
+# 板块 8: 4 盏状态 LED 独立开关
+msgid "LED Indicators"
+msgstr "指示灯设置"
+
+msgid "Disable Clock LED (Status 1)"
+msgstr "关闭时钟指示灯 (状态位 1)"
+
+msgid "Turn off the small clock indicator LED to the right of the digits."
+msgstr "关闭时钟指示灯"
+
+msgid "Disable Medal LED (Status 2)"
+msgstr "关闭奖牌指示灯 (状态位 2)"
+
+msgid "Turn off the medal/connectivity indicator LED."
+msgstr "关闭奖牌/连通性指示灯。"
+
+msgid "Disable Up Arrow LED (Status 4)"
+msgstr "关闭上箭头指示灯 (状态位 4)"
+
+msgid "Turn off the upload speed up-arrow indicator LED."
+msgstr "关闭显示上行速率时的上箭头指示灯。"
+
+msgid "Disable Down Arrow LED (Status 8)"
+msgstr "关闭下箭头指示灯 (状态位 8)"
+
+msgid "Turn off the download speed down-arrow indicator LED."
+msgstr "关闭显示下行速率时的下箭头指示灯。"
+
+# ==========================================
+# 🌟 新增：GPIO 双后端 + 网络缓存设置
+# ==========================================
+
+# GPIO 后端选择
+msgid "GPIO Backend"
+msgstr "GPIO 后端"
+
+msgid "Auto (Recommended)"
+msgstr "自动 (推荐)"
+
+msgid "Character Device (/dev/gpiochipN)"
+msgstr "字符设备 (/dev/gpiochipN)"
+
+msgid "SysFS (/sys/class/gpio)"
+msgstr "SysFS (/sys/class/gpio)"
+
+msgid "Auto = prefer character device (modern kernel standard), fallback to SysFS automatically. This fixes the \"screen not lighting up\" issue on QWRT/iStoreOS and other firmwares."
+msgstr "自动 = 优先使用字符设备 (现代内核标准接口)，失败自动回退 SysFS。可修复 QWRT/iStoreOS 等固件上屏幕不亮的问题。"
+
+msgid "GPIO Base (SysFS only)"
+msgstr "GPIO Base值 (仅 SysFS)"
+
+msgid "Only used by SysFS backend. \"auto\" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark)."
+msgstr "仅 SysFS 后端使用。\"auto\" = 自动探测主控芯片基址。仅当自动探测到错误引脚 (屏幕不亮) 时才需手动指定。默认512，QWRT等可能为432/0，日志中查看此值"
+
+# 网络缓存时间
+msgid "IP Cache TTL (sec)"
+msgstr "公网 IP 缓存时间 (秒)"
+
+msgid "How long to cache the WAN IP (default 3600s = 1 hour). Lower only if your IP changes frequently; higher avoids being rate-limited."
+msgstr "公网 IP 缓存时长 (默认 3600 秒 = 1 小时)。IP 频繁变化时才需调低；调高可避免被 API 限频拉黑。"
+
+msgid "Weather Cache TTL (sec)"
+msgstr "天气缓存时间 (秒)"
+
+msgid "How long to cache weather data (default 1800s = 30 min). Higher values prevent API blacklisting; weather rarely changes more often than this."
+msgstr "天气数据缓存时长 (默认 1800 秒 = 30 分钟)。调高可防止被天气 API 限频拉黑；天气变化很少比这更频繁。"
+
+msgid "HTTP Cache TTL (sec)"
+msgstr "HTTP 缓存时间 (秒)"
+
+msgid "How long to cache the HTTP custom response (default 60s). Set higher to avoid spamming your own/custom API, or to 0 to disable caching."
+msgstr "HTTP 自定义请求缓存时长 (默认 60 秒)。调高可避免频繁请求你的自定义 API；设为 0 可禁用缓存。"
