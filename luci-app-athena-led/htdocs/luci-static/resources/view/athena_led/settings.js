@@ -22,8 +22,12 @@ return L.view.extend({
 			'uci set athena_led.general.temp_sensors="0 1 2 3 4"; ' +
 			'uci set athena_led.general.enable_sleep=0; ' +
 			'uci set athena_led.general.http_length=15; ' +
-			'uci set athena_led.general.cache_ttl=1800; ' +
 			'uci set athena_led.general.button_gpio=71; ' +
+			'uci set athena_led.general.gpio_backend=auto; ' +
+			'uci set athena_led.general.gpio_base=auto; ' +
+			'uci set athena_led.general.weather_cache_secs=1800; ' +
+			'uci set athena_led.general.ip_cache_secs=3600; ' +
+			'uci set athena_led.general.http_cache_secs=60; ' +
 			'uci set athena_led.general.enable_mesh_button=0; ' +
 			'uci set athena_led.general.mesh_button_gpio=72; ' +
 			'uci set athena_led.general.mesh_short_action=none; ' +
@@ -147,6 +151,12 @@ return L.view.extend({
 		o.value('http://ipv4.icanhazip.com', 'icanhazip.com');
 		o.default = 'http://checkip.amazonaws.com';
 
+		// 🌟 公网 IP 缓存时间
+		o = s.taboption('network', form.Value, 'ip_cache_secs', _('IP Cache TTL (sec)'));
+		o.datatype = 'uinteger';
+		o.default = '3600';
+		o.description = _('How long to cache the WAN IP (default 3600s = 1 hour). Lower only if your IP changes frequently; higher avoids being rate-limited.');
+
 		// ================= SENSOR =================
 		o = s.taboption('sensor', form.MultiValue, 'temp_sensors', _('Temperature Sensors'));
 		o.widget = 'checkbox';
@@ -177,10 +187,11 @@ return L.view.extend({
 		o.value('simple', _('Simple (Icon + Temp)'));
 		o.value('full', _('Full (Original)'));
 
-		o = s.taboption('sensor', form.Value, 'cache_ttl', _('Cache TTL (seconds)'));
+		// 🌟 天气缓存时间
+		o = s.taboption('sensor', form.Value, 'weather_cache_secs', _('Weather Cache TTL (sec)'));
 		o.datatype = 'uinteger';
 		o.default = '1800';
-		o.description = _('How often to refresh weather/IP/HTTP cache in seconds. Set higher (e.g. 900/1800/3600) to reduce API requests and avoid being rate-limited.');
+		o.description = _('How long to cache weather data (default 1800s = 30 min). Higher values prevent API blacklisting; weather rarely changes more often than this.');
 
 		// ================= CUSTOM =================
 		o = s.taboption('custom', form.Value, 'custom_content', _('Custom Text'));
@@ -195,6 +206,12 @@ return L.view.extend({
 		o.datatype = 'uinteger';
 		o.default = '15';
 		o.description = _('Max characters to display (defaults to 15). Set higher for longer text.');
+
+		// 🌟 HTTP 自定义请求缓存时间
+		o = s.taboption('custom', form.Value, 'http_cache_secs', _('HTTP Cache TTL (sec)'));
+		o.datatype = 'uinteger';
+		o.default = '60';
+		o.description = _('How long to cache the HTTP custom response (default 60s). Set higher to avoid spamming your own/custom API, or to 0 to disable caching.');
 
 		// ================= SLEEP =================
 		o = s.taboption('sleep', form.Flag, 'enable_sleep', _('Enable Scheduled Sleep'));
@@ -214,6 +231,19 @@ return L.view.extend({
 		o.datatype = 'uinteger';
 		o.default = '71';
 		o.description = _('GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware.');
+
+		// 🌟 GPIO 双后端设置（屏幕 + 按键通用）
+		o = s.taboption('button', form.ListValue, 'gpio_backend', _('GPIO Backend'));
+		o.value('auto', _('Auto (Recommended)'));
+		o.value('cdev', _('Character Device (/dev/gpiochipN)'));
+		o.value('sysfs', _('SysFS (/sys/class/gpio)'));
+		o.default = 'auto';
+		o.description = _('Auto = prefer character device (modern kernel standard), fallback to SysFS automatically. This fixes the "screen not lighting up" issue on QWRT/iStoreOS and other firmwares.');
+
+		o = s.taboption('button', form.Value, 'gpio_base', _('GPIO Base (SysFS only)'));
+		o.datatype = 'string';
+		o.default = 'auto';
+		o.description = _('Only used by SysFS backend. "auto" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark).');
 
 		o = s.taboption('button', form.Flag, 'enable_mesh_button', _('Enable Mesh Button'));
 		o.description = _('Enable custom action mapping for the Mesh button.');

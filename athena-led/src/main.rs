@@ -64,14 +64,14 @@ struct SystemMonitor {
     last_rx_bytes: u64, last_tx_bytes: u64, last_net_check: Instant,
     last_cpu_total: u64, last_cpu_idle: u64,
     last_stock_price: f64,
-    cached_weather: String, last_weather_time: Instant,
-    cached_ip: String, last_ip_time: Instant,
-    cached_http_text: String, last_http_time: Instant,
-    cache_ttl_secs: u64,
+    // 🌐 缓存：天气 / 公网 IP / 自定义 HTTP（全部可配置 TTL，避免频繁请求被拉黑）
+    cached_weather: String, last_weather_time: Instant, weather_cache_secs: u64,
+    cached_ip: String, last_ip_time: Instant, ip_cache_secs: u64,
+    cached_http_text: String, last_http_time: Instant, http_cache_secs: u64,
 }
 
 impl SystemMonitor {
-    fn new(net_dev: String, cache_ttl_secs: u64) -> Result<Self> {
+    fn new(net_dev: String, weather_cache_secs: u64, ip_cache_secs: u64, http_cache_secs: u64) -> Result<Self> {
         let client = Client::builder()
             .user_agent("Mozilla/5.0 (Athena-LED Router)")
             .timeout(Duration::from_secs(30))
@@ -79,12 +79,11 @@ impl SystemMonitor {
             .context("Failed to create HTTP client")?;
         Ok(Self {
             http_client: client, net_interface: net_dev,
-            cached_weather: "Wait...".to_string(), last_weather_time: Instant::now() - Duration::from_secs(3600*24),
-            cached_ip: "Checking...".to_string(), last_ip_time: Instant::now() - Duration::from_secs(3600*24),
-            cached_http_text: String::new(), last_http_time: Instant::now() - Duration::from_secs(3600*24),
+            cached_weather: "Wait...".to_string(), last_weather_time: Instant::now() - Duration::from_secs(3600*24), weather_cache_secs,
+            cached_ip: "Checking...".to_string(), last_ip_time: Instant::now() - Duration::from_secs(3600*24), ip_cache_secs,
+            cached_http_text: String::new(), last_http_time: Instant::now() - Duration::from_secs(3600*24), http_cache_secs,
             last_rx_bytes: 0, last_tx_bytes: 0, last_net_check: Instant::now(),
             last_cpu_total: 0, last_cpu_idle: 0, last_stock_price: 0.0,
-            cache_ttl_secs,
         })
     }
     fn init(&mut self) {
@@ -228,10 +227,9 @@ impl SystemMonitor {
     }
     pub async fn get_http_text(&mut self, url: &str, prefix: &str, max_len: usize) -> String {
         if url.is_empty() { return String::new(); }
-        if !self.cached_http_text.is_empty() && !self.cached_http_text.contains("Err") {
-            if self.last_http_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
-                return self.cached_http_text.clone();
-            }
+        // 🌐 [缓存] 未过期且有有效缓存 → 直接返回，避免频繁请求被 API 方拉黑
+        if self.last_http_time.elapsed() < Duration::from_secs(self.http_cache_secs) {
+            if !self.cached_http_text.is_empty() { return self.cached_http_text.clone(); }
         }
         let client = reqwest::Client::builder().timeout(Duration::from_secs(3)).build().unwrap_or(self.http_client.clone());
         let result = match client.get(url).send().await {
@@ -245,6 +243,7 @@ impl SystemMonitor {
             }
             Err(_) => format!("{}Wait", prefix),
         };
+        // 只缓存成功的结果（非 Err/Wait），防止错误内容占位太久
         if !result.contains("Err") && !result.contains("Wait") {
             self.cached_http_text = result.clone();
             self.last_http_time = Instant::now();
@@ -252,7 +251,8 @@ impl SystemMonitor {
         result
     }
     async fn get_public_ip(&mut self, ip_url: &str) -> String {
-        if self.last_ip_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
+        // 🌐 [缓存] 过期时间从参数来，默认 3600 秒
+        if self.last_ip_time.elapsed() < Duration::from_secs(self.ip_cache_secs) {
             if !self.cached_ip.contains("Err") { return self.cached_ip.clone(); }
         }
         let mut new_ip = "IP:Err".to_string();
@@ -290,7 +290,8 @@ impl SystemMonitor {
         ("Err".to_string(), 0)
     }
     async fn get_smart_weather(&mut self, location: &str, source: &str, key: &str) -> String {
-        if self.last_weather_time.elapsed() < Duration::from_secs(self.cache_ttl_secs) {
+        // 🌐 [缓存] 过期时间从参数来，默认 1800 秒 (30 分钟)，避免被天气 API 限频拉黑
+        if self.last_weather_time.elapsed() < Duration::from_secs(self.weather_cache_secs) {
             if !self.cached_weather.contains("Err") && !self.cached_weather.contains("Wait") {
                 return self.cached_weather.clone();
             }
@@ -437,16 +438,29 @@ struct Args {
     #[arg(long, default_value = "")] sleep_end: String,
     #[arg(long, default_value = "simple")] weather_format: String,
 
-    // 缓存刷新间隔（秒），天气/IP/HTTP/股票统一用此 TTL
-    #[arg(long, default_value_t = 1800)] cache_ttl: u64,
-
     // [按键] GPIO 引脚偏移，AX6600 按键固定为 71
     #[arg(long, default_value = "71")]
     pub button_gpio: String,
 
-    // [按键] GPIO 基址 (debugfs 后端换算全局编号用)
+    // [按键] GPIO 基址 (sysfs/debugfs 后端换算全局编号用)
     #[arg(long, default_value = "auto")]
     pub gpio_base: String,
+
+    // 🌟 [新] GPIO 后端选择: "auto"(推荐) / "cdev" / "sysfs"
+    // auto = 优先 /dev/gpiochipN 字符设备 (现代内核标准接口)，失败自动回退 sysfs
+    #[arg(long, default_value = "auto")]
+    pub gpio_backend: String,
+
+    // 🌟 [新] 三个网络请求缓存时间（秒），可在 LuCI 界面设置
+    // 防止短轮询时频繁访问天气/IP/HTTP 接口导致被服务商拉黑
+    #[arg(long, default_value_t = 1800)]
+    pub weather_cache_secs: u64,
+
+    #[arg(long, default_value_t = 3600)]
+    pub ip_cache_secs: u64,
+
+    #[arg(long, default_value_t = 60)]
+    pub http_cache_secs: u64,
 
     // [Mesh 键] 是否启用 Mesh 键自定义动作
     #[arg(long, default_value_t = 0)]
@@ -654,13 +668,21 @@ async fn main() -> Result<()> {
     if args.disable_led_up    { disabled_led_mask |= 0x04; }
     if args.disable_led_down  { disabled_led_mask |= 0x08; }
 
-    let mut screen = led_screen::LedScreen::new_with_mask(
-        69, 70, 73, 74, disabled_led_mask,
+    // 🌟 走新的双后端构造函数，不再写死 GPIO 号，兼容 QWRT / iStoreOS / 官方 OpenWrt 等所有固件
+    let mut screen = led_screen::LedScreen::new(
+        &args.gpio_backend,
+        &args.gpio_base,
+        disabled_led_mask,
     )
         .context("Failed to init screen")?;
     screen.power(true, args.light_level)?;
 
-    let mut monitor = SystemMonitor::new(args.net_interface.clone(), args.cache_ttl)
+    let mut monitor = SystemMonitor::new(
+        args.net_interface.clone(),
+        args.weather_cache_secs,
+        args.ip_cache_secs,
+        args.http_cache_secs,
+    )
         .context("Failed to initialize system monitor")?;
 
     let running = Arc::new(AtomicBool::new(true));
