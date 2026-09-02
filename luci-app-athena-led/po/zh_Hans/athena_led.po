@@ -290,7 +290,7 @@ msgid "Disable Clock LED (Status 1)"
 msgstr "关闭时钟指示灯 (状态位 1)"
 
 msgid "Turn off the small clock indicator LED to the right of the digits."
-msgstr "关闭时钟指示灯（显示时间时亮起的那盏灯）。"
+msgstr "关闭时钟指示灯"
 
 msgid "Disable Medal LED (Status 2)"
 msgstr "关闭奖牌指示灯 (状态位 2)"
@@ -331,10 +331,10 @@ msgid "Auto = prefer character device (modern kernel standard), fallback to SysF
 msgstr "自动 = 优先使用字符设备 (现代内核标准接口)，失败自动回退 SysFS。可修复 QWRT/iStoreOS 等固件上屏幕不亮的问题。"
 
 msgid "GPIO Base (SysFS only)"
-msgstr "GPIO 基址 (仅 SysFS)"
+msgstr "GPIO Base值 (仅 SysFS)"
 
 msgid "Only used by SysFS backend. \"auto\" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark)."
-msgstr "仅 SysFS 后端使用。\"auto\" = 自动探测主控芯片基址。仅当自动探测到错误引脚 (屏幕不亮) 时才需手动指定。"
+msgstr "仅 SysFS 后端使用。\"auto\" = 自动探测主控芯片基址。仅当自动探测到错误引脚 (屏幕不亮) 时才需手动指定。默认512，QWRT等可能为432/0，日志中查看此值"
 
 # 网络缓存时间
 msgid "IP Cache TTL (sec)"
