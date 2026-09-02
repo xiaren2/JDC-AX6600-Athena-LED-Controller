@@ -243,6 +243,7 @@ return L.view.extend({
 		o = s.taboption('button', form.Value, 'gpio_base', _('GPIO Base (SysFS only)'));
 		o.datatype = 'string';
 		o.default = 'auto';
+		o.depends('gpio_backend', 'sysfs');
 		o.description = _('Only used by SysFS backend. "auto" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark).');
 
 		o = s.taboption('button', form.Flag, 'enable_mesh_button', _('Enable Mesh Button'));
