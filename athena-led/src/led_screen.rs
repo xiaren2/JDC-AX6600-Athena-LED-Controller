@@ -324,7 +324,7 @@ pub fn detect_gpio_base() -> u64 {
                 Some(b) => b,
                 None => continue,
             };
-            let ngpio = read_num("nggpio").unwrap_or(read_num("ngpio").unwrap_or(0));
+            let nggpio = read_num("ngpio").unwrap_or(read_num("nggpio").unwrap_or(0));
             let label = fs::read_to_string(path.join("label"))
                 .unwrap_or_default()
                 .trim()
@@ -334,18 +334,18 @@ pub fn detect_gpio_base() -> u64 {
             let better = match &best {
                 None => true,
                 Some((_, best_n, best_main)) => {
-                    (is_main && !best_main) || (is_main == *best_main && ngpio > *best_n)
+                    (is_main && !best_main) || (is_main == *best_main && nggpio > *best_n)
                 }
             };
             if better {
-                best = Some((base, ngpio, is_main));
+                best = Some((base, nggpio, is_main));
             }
         }
     }
 
     match best {
-        Some((base, ngpio, _)) => {
-            println!("🔍 [GPIO] 自动探测到主控芯片 base={} (ngpio={})", base, ngpio);
+        Some((base, nggpio, _)) => {
+            println!("🔍 [GPIO] 自动探测到主控芯片 base={} (ngpio={})", base, nggpio);
             base
         }
         None => {
@@ -431,7 +431,7 @@ fn create_line(offset: u64, backend: &GpioBackend) -> Result<GpioLine> {
                 .with_line(offset as u32)
                 .as_output(gpiocdev::line::Value::Inactive)
                 .request()
-                .map(GpioLine::Cdev)
+                .map(|req| GpioLine::Cdev(req, offset as u32))
                 .map_err(|e| anyhow::anyhow!("cdev request line {} failed: {}", offset, e))
         }
         GpioBackend::Sysfs(base) => {
