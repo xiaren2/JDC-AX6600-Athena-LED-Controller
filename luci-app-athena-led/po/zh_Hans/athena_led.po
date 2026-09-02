@@ -1,6 +1,34 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
+# 运行状态区域
+msgid "Running Status"
+msgstr "运行状态"
+
+msgid "Collecting data..."
+msgstr "正在收集数据..."
+
+msgid "RUNNING"
+msgstr "运行中"
+
+msgid "NOT RUNNING"
+msgstr "未运行"
+
+msgid "Unknown Error"
+msgstr "未知错误"
+
+msgid "Service restarted successfully."
+msgstr "服务重启成功。"
+
+msgid "Service stopped."
+msgstr "服务已停止。"
+
+msgid "Failed to restart: "
+msgstr "重启失败："
+
+msgid "Failed to stop: "
+msgstr "停止失败："
+
 # 标题与描述
 msgid "Athena LED Controller"
 msgstr "雅典娜 LED 控制器"
@@ -262,7 +290,7 @@ msgid "Disable Clock LED (Status 1)"
 msgstr "关闭时钟指示灯 (状态位 1)"
 
 msgid "Turn off the small clock indicator LED to the right of the digits."
-msgstr "关闭时钟指示灯（显示时间时亮起的那盏灯）。"
+msgstr "关闭时钟指示灯"
 
 msgid "Disable Medal LED (Status 2)"
 msgstr "关闭奖牌指示灯 (状态位 2)"
@@ -281,3 +309,48 @@ msgstr "关闭下箭头指示灯 (状态位 8)"
 
 msgid "Turn off the download speed down-arrow indicator LED."
 msgstr "关闭显示下行速率时的下箭头指示灯。"
+
+# ==========================================
+# 🌟 新增：GPIO 双后端 + 网络缓存设置
+# ==========================================
+
+# GPIO 后端选择
+msgid "GPIO Backend"
+msgstr "GPIO 后端"
+
+msgid "Auto (Recommended)"
+msgstr "自动 (推荐)"
+
+msgid "Character Device (/dev/gpiochipN)"
+msgstr "字符设备 (/dev/gpiochipN)"
+
+msgid "SysFS (/sys/class/gpio)"
+msgstr "SysFS (/sys/class/gpio)"
+
+msgid "Auto = prefer character device (modern kernel standard), fallback to SysFS automatically. This fixes the \"screen not lighting up\" issue on QWRT/iStoreOS and other firmwares."
+msgstr "自动 = 优先使用字符设备 (现代内核标准接口)，失败自动回退 SysFS。可修复 QWRT/iStoreOS 等固件上屏幕不亮的问题。"
+
+msgid "GPIO Base (SysFS only)"
+msgstr "GPIO Base值 (仅 SysFS)"
+
+msgid "Only used by SysFS backend. \"auto\" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark)."
+msgstr "仅 SysFS 后端使用。\"auto\" = 自动探测主控芯片基址。仅当自动探测到错误引脚 (屏幕不亮) 时才需手动指定。默认512，QWRT等可能为432/0，日志中查看此值"
+
+# 网络缓存时间
+msgid "IP Cache TTL (sec)"
+msgstr "公网 IP 缓存时间 (秒)"
+
+msgid "How long to cache the WAN IP (default 3600s = 1 hour). Lower only if your IP changes frequently; higher avoids being rate-limited."
+msgstr "公网 IP 缓存时长 (默认 3600 秒 = 1 小时)。IP 频繁变化时才需调低；调高可避免被 API 限频拉黑。"
+
+msgid "Weather Cache TTL (sec)"
+msgstr "天气缓存时间 (秒)"
+
+msgid "How long to cache weather data (default 1800s = 30 min). Higher values prevent API blacklisting; weather rarely changes more often than this."
+msgstr "天气数据缓存时长 (默认 1800 秒 = 30 分钟)。调高可防止被天气 API 限频拉黑；天气变化很少比这更频繁。"
+
+msgid "HTTP Cache TTL (sec)"
+msgstr "HTTP 缓存时间 (秒)"
+
+msgid "How long to cache the HTTP custom response (default 60s). Set higher to avoid spamming your own/custom API, or to 0 to disable caching."
+msgstr "HTTP 自定义请求缓存时长 (默认 60 秒)。调高可避免频繁请求你的自定义 API；设为 0 可禁用缓存。"

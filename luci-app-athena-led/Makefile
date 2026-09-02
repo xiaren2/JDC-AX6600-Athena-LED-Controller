@@ -26,7 +26,7 @@ define Package/$(PKG_NAME)
   SUBMENU:=3. Applications
   TITLE:=LuCI Support for Athena LED (Enhanced)
 
-  DEPENDS:=+lua +luci-base @(aarch64||arm)
+  DEPENDS:=+luci-base @(aarch64||arm)
   PKGARCH:=all
 endef
 
@@ -45,32 +45,48 @@ endef
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
-	$(CP) ./luasrc $(PKG_BUILD_DIR)/
+	$(CP) ./htdocs $(PKG_BUILD_DIR)/
 	$(CP) ./root $(PKG_BUILD_DIR)/
 	$(CP) ./po $(PKG_BUILD_DIR)/
 endef
 
 define Build/Compile
-	[ -d ./po/zh_Hans ] && po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/zh_Hans.lmo || true
+	[ -d ./po/zh_Hans ] && po2lmo ./po/zh_Hans/athena_led.po $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo; true
 endef
 
 define Package/$(PKG_NAME)/install
-	$(INSTALL_DIR) $(1)/usr/lib/lua/luci
-	$(CP) ./luasrc/* $(1)/usr/lib/lua/luci/
-	
+	# JS view 文件
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/athena_led
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/athena_led/settings.js $(1)/www/luci-static/resources/view/athena_led/
+
+	# 菜单注册
+	$(INSTALL_DIR) $(1)/usr/share/luci/menu.d
+	$(INSTALL_DATA) ./root/usr/share/luci/menu.d/luci-app-athena-led.json $(1)/usr/share/luci/menu.d/
+
+	# init.d 启动脚本
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/athena_led $(1)/etc/init.d/
-	
+
+	# 配置文件
 	$(INSTALL_DIR) $(1)/etc/config
 	$(INSTALL_CONF) ./root/etc/config/athena_led $(1)/etc/config/
-	
 
+	# rc.button 按键脚本
+	$(INSTALL_DIR) $(1)/etc/rc.button
+	$(INSTALL_BIN) ./root/etc/rc.button/BTN_0 $(1)/etc/rc.button/
+
+	# athena-led 二进制
 	$(INSTALL_DIR) $(1)/usr/bin
 	tar xf $(DL_DIR)/$(PKG_SOURCE) -C $(PKG_BUILD_DIR)
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/athena-led $(1)/usr/bin/
-	
+
+	# 国际化翻译 (JS 版 LuCI 路径)
+	$(INSTALL_DIR) $(1)/usr/share/luci/i18n
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/share/luci/i18n/
+
+	# 国际化翻译 (兼容旧版 Lua LuCI 路径)
 	$(INSTALL_DIR) $(1)/usr/lib/lua/luci/i18n
-	[ -f $(PKG_BUILD_DIR)/zh_Hans.lmo ] && $(INSTALL_DATA) $(PKG_BUILD_DIR)/zh_Hans.lmo $(1)/usr/lib/lua/luci/i18n/athena_led.zh-cn.lmo || true
+	$(INSTALL_DATA) $(PKG_BUILD_DIR)/athena_led.zh-cn.lmo $(1)/usr/lib/lua/luci/i18n/
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

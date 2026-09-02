@@ -19,11 +19,13 @@ start_service() {
 
     check_binary || return 1
 
-    # --- 1. 读取所有配置 (基础 + 定时 + 按键 + LED) ---
+    # --- 1. 读取所有配置 (基础 + 定时 + 按键 + GPIO + 缓存 + LED) ---
     local seconds lightLevel option netInterface ipUrl value url \
           weatherCity weatherSource seniverseKey tempFlag \
           enableSleep sleepStart sleepEnd \
-          buttonGpio enableMeshButton meshButtonGpio meshShortAction meshLongAction \
+          buttonGpio gpioBackend gpioBase \
+          weatherCacheSecs ipCacheSecs httpCacheSecs \
+          enableMeshButton meshButtonGpio meshShortAction meshLongAction \
           disableLedClock disableLedMedal disableLedUp disableLedDown
 
     # 基础配置
@@ -46,8 +48,14 @@ start_service() {
     config_get sleepStart "$cfg" 'off_time' ''
     config_get sleepEnd "$cfg" 'on_time' ''
 
-    # 按键配置
+    # 按键 + GPIO 配置
     config_get buttonGpio "$cfg" 'button_gpio' '71'
+    config_get gpioBackend "$cfg" 'gpio_backend' 'auto'
+    config_get gpioBase "$cfg" 'gpio_base' 'auto'
+    # 🌟 网络请求缓存时间（秒）
+    config_get weatherCacheSecs "$cfg" 'weather_cache_secs' '1800'
+    config_get ipCacheSecs "$cfg" 'ip_cache_secs' '3600'
+    config_get httpCacheSecs "$cfg" 'http_cache_secs' '60'
     config_get_bool enableMeshButton "$cfg" 'enable_mesh_button' '0'
     config_get meshButtonGpio "$cfg" 'mesh_button_gpio' '72'
     config_get meshShortAction "$cfg" 'mesh_short_action' 'none'
@@ -88,8 +96,14 @@ start_service() {
     procd_append_param command --sleep-start "$sleepStart"
     procd_append_param command --sleep-end "$sleepEnd"
 
-    # 按键参数
+    # 按键 + GPIO 双后端参数
     procd_append_param command --button-gpio "$buttonGpio"
+    procd_append_param command --gpio-backend "$gpioBackend"
+    procd_append_param command --gpio-base "$gpioBase"
+    # 🌟 网络请求缓存时间参数（防止频繁访问被拉黑）
+    procd_append_param command --weather-cache-secs "$weatherCacheSecs"
+    procd_append_param command --ip-cache-secs "$ipCacheSecs"
+    procd_append_param command --http-cache-secs "$httpCacheSecs"
     procd_append_param command --enable-mesh-button "$enableMeshButton"
     procd_append_param command --mesh-button-gpio "$meshButtonGpio"
     procd_append_param command --mesh-short-action "$meshShortAction"

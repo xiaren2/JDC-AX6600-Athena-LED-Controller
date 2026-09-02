@@ -37,10 +37,17 @@ config settings 'general'
 
     # 按键设置
     option button_gpio '71'
+    option gpio_backend 'auto'
+    option gpio_base 'auto'
     option enable_mesh_button '0'
     option mesh_button_gpio '72'
     option mesh_short_action 'none'
     option mesh_long_action 'none'
+
+    # 🌟 网络请求缓存时间（秒），防止频繁访问 API 被拉黑
+    option weather_cache_secs '1800'
+    option ip_cache_secs '3600'
+    option http_cache_secs '60'
 
     # 状态指示灯独立开关 (1=关闭, 0=启用)
     option disable_led_clock '0'
