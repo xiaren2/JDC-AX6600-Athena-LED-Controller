@@ -122,6 +122,7 @@ return L.view.extend({
 		o.value('temp', _('Temperatures'));
 		o.value('ip', _('WAN IP'));
 		o.value('dev', _('Online Devices (ARP)'));
+		o.value('dhcp', _('Online Devices (DHCP)'));
 		o.value('netspeed_down', _('Realtime Speed (RX)'));
 		o.value('netspeed_up', _('Realtime Speed (TX)'));
 		o.value('traffic_down', _('Total Traffic (RX)'));

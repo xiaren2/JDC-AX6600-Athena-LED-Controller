@@ -95,6 +95,9 @@ msgstr "公网 IP"
 msgid "Online Devices (ARP)"
 msgstr "在线设备数 (ARP)"
 
+msgid "Online Devices (DHCP)"
+msgstr "在线设备数 (DHCP)"
+
 msgid "Realtime Speed (RX)"
 msgstr "实时下载速度 (RX)"
 

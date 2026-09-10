@@ -225,6 +225,15 @@ impl SystemMonitor {
         }
         "Dev:0".to_string()
     }
+    /// 从 /tmp/dhcp.leases 读取 DHCP 在线设备数
+    /// 文件格式: <expiry> <mac> <ip> <hostname> <client-id>，每行一个租约
+    fn get_dhcp_devices(&self) -> String {
+        if let Ok(content) = fs::read_to_string("/tmp/dhcp.leases") {
+            let count = content.lines().filter(|l| !l.trim().is_empty()).count();
+            return format!("Dev:{}", count);
+        }
+        "Dev:0".to_string()
+    }
     pub async fn get_http_text(&mut self, url: &str, prefix: &str, max_len: usize) -> String {
         if url.is_empty() { return String::new(); }
         // 🌐 [缓存] 未过期且有有效缓存 → 直接返回，避免频繁请求被 API 方拉黑
@@ -939,6 +948,7 @@ async fn show_module_with_interrupt(
         "netspeed_down" => screen.write_data(monitor.get_speed_string(0).as_bytes(), 8)?,
         "netspeed_up" => screen.write_data(monitor.get_speed_string(1).as_bytes(), 4)?,
         "dev" => screen.write_data(monitor.get_online_devices().as_bytes(), 0)?,
+        "dhcp" => screen.write_data(monitor.get_dhcp_devices().as_bytes(), 0)?,
         "banner" => {
             let t = if !args.custom_text.is_empty() {args.custom_text.clone()} else {"Welcome".to_string()};
             screen.write_data(t.as_bytes(), 0)?;
