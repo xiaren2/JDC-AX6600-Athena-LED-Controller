@@ -229,28 +229,15 @@ return L.view.extend({
 		o.description = _('HH:MM format (e.g. 07:00).');
 
 		// ================= BUTTON =================
-		o = s.taboption('button', form.Value, 'button_gpio', _('Screen Button GPIO Pin'));
-		o.datatype = 'uinteger';
-		o.default = '71';
-		o.description = _('GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware.');
-
 		o = s.taboption('button', form.Flag, 'enable_screen_button', _('Enable Screen Button'));
 		o.default = '1';
 		o.description = _('Uncheck to disable the screen button (short press next / double-click home / long-press off). Useful if the button is broken or physical control is unwanted.');
 
-		// 🌟 GPIO 双后端设置（屏幕 + 按键通用）
-		o = s.taboption('button', form.ListValue, 'gpio_backend', _('GPIO Backend'));
-		o.value('auto', _('Auto (Recommended)'));
-		o.value('cdev', _('Character Device (/dev/gpiochipN)'));
-		o.value('sysfs', _('SysFS (/sys/class/gpio)'));
-		o.default = 'auto';
-		o.description = _('Auto = prefer character device (modern kernel standard), fallback to SysFS automatically. This fixes the "screen not lighting up" issue on QWRT/iStoreOS and other firmwares.');
-
-		o = s.taboption('button', form.Value, 'gpio_base', _('GPIO Base (SysFS only)'));
-		o.datatype = 'string';
-		o.default = 'auto';
-		o.depends('gpio_backend', 'sysfs');
-		o.description = _('Only used by SysFS backend. "auto" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark).');
+		o = s.taboption('button', form.Value, 'button_gpio', _('Screen Button GPIO Pin'));
+		o.datatype = 'uinteger';
+		o.default = '71';
+		o.depends('enable_screen_button', '1');
+		o.description = _('GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware.');
 
 		o = s.taboption('button', form.Flag, 'enable_mesh_button', _('Enable Mesh Button'));
 		o.description = _('Enable custom action mapping for the Mesh button.');
@@ -278,6 +265,20 @@ return L.view.extend({
 		o.value('restart_network', _('Restart Network'));
 		o.value('restart_wifi', _('Restart Wi-Fi'));
 		o.value('restart_athena', _('Restart Athena LED'));
+
+		// 🌟 GPIO 双后端设置（屏幕 + 按键通用）
+		o = s.taboption('button', form.ListValue, 'gpio_backend', _('GPIO Backend'));
+		o.value('auto', _('Auto (Recommended)'));
+		o.value('cdev', _('Character Device (/dev/gpiochipN)'));
+		o.value('sysfs', _('SysFS (/sys/class/gpio)'));
+		o.default = 'auto';
+		o.description = _('Auto = prefer character device (modern kernel standard), fallback to SysFS automatically. This fixes the "screen not lighting up" issue on QWRT/iStoreOS and other firmwares.');
+
+		o = s.taboption('button', form.Value, 'gpio_base', _('GPIO Base (SysFS only)'));
+		o.datatype = 'string';
+		o.default = 'auto';
+		o.depends('gpio_backend', 'sysfs');
+		o.description = _('Only used by SysFS backend. "auto" = auto-detect the main SoC controller base. Change only if auto-detection gives wrong pins (screen stays dark).');
 
 		// ================= LED INDICATORS =================
 		o = s.taboption('led', form.Flag, 'disable_led_clock', _('Disable Clock LED (Status 1)'));
