@@ -1,0 +1,33 @@
+name: Cleanup All Completed Workflow Runs
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete completed workflow runs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Fetching completed workflow runs..."
+          runs=$(gh api repos/${{ github.repository }}/actions/runs \
+            --paginate \
+            --jq '.workflow_runs[] | select(.status=="completed") | .id')
+
+          if [ -z "$runs" ]; then
+            echo "No completed workflow runs found."
+            exit 0
+          fi
+
+          echo "$runs" | while read run_id; do
+            echo "Deleting run: $run_id"
+            gh api -X DELETE repos/${{ github.repository }}/actions/runs/$run_id
+          done
+
+          echo "✅ Cleanup finished."
