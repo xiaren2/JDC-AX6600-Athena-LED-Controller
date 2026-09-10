@@ -23,6 +23,7 @@ return L.view.extend({
 			'uci set athena_led.general.enable_sleep=0; ' +
 			'uci set athena_led.general.http_length=15; ' +
 			'uci set athena_led.general.button_gpio=71; ' +
+			'uci set athena_led.general.enable_screen_button=1; ' +
 			'uci set athena_led.general.gpio_backend=auto; ' +
 			'uci set athena_led.general.gpio_base=auto; ' +
 			'uci set athena_led.general.weather_cache_secs=1800; ' +
@@ -232,6 +233,10 @@ return L.view.extend({
 		o.datatype = 'uinteger';
 		o.default = '71';
 		o.description = _('GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware.');
+
+		o = s.taboption('button', form.Flag, 'enable_screen_button', _('Enable Screen Button'));
+		o.default = '1';
+		o.description = _('Uncheck to disable the screen button (short press next / double-click home / long-press off). Useful if the button is broken or physical control is unwanted.');
 
 		// 🌟 GPIO 双后端设置（屏幕 + 按键通用）
 		o = s.taboption('button', form.ListValue, 'gpio_backend', _('GPIO Backend'));

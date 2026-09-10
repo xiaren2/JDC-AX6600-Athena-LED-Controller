@@ -230,9 +230,9 @@ impl SystemMonitor {
     fn get_dhcp_devices(&self) -> String {
         if let Ok(content) = fs::read_to_string("/tmp/dhcp.leases") {
             let count = content.lines().filter(|l| !l.trim().is_empty()).count();
-            return format!("Dev:{}", count);
+            return format!("Dev2:{}", count);
         }
-        "Dev:0".to_string()
+        "Dev2:0".to_string()
     }
     pub async fn get_http_text(&mut self, url: &str, prefix: &str, max_len: usize) -> String {
         if url.is_empty() { return String::new(); }
@@ -470,6 +470,10 @@ struct Args {
 
     #[arg(long, default_value_t = 60)]
     pub http_cache_secs: u64,
+
+    // [屏幕键] 是否启用屏幕按键监听（短按切台/双击回首页/长按息屏）
+    #[arg(long, default_value_t = 1)]
+    pub enable_screen_button: u8,
 
     // [Mesh 键] 是否启用 Mesh 键自定义动作
     #[arg(long, default_value_t = 0)]
@@ -709,14 +713,19 @@ async fn main() -> Result<()> {
     // ==========================================
     // 🎮 启动按键监听器 (GPIO 引脚 71)
     // 双后端: 字符设备 /dev/gpiochipN (优先) / debugfs 兜底
+    // 可通过 --enable-screen-button 0 禁用（如按键损坏或不需要物理控制时）
     // ==========================================
-    button::spawn_button_listener(
-        tx.clone(),
-        running_for_listener,
-        args.button_gpio.clone(),
-        args.gpio_base.clone(),
-        Arc::clone(&control_state),
-    );
+    if args.enable_screen_button != 0 {
+        button::spawn_button_listener(
+            tx.clone(),
+            running_for_listener,
+            args.button_gpio.clone(),
+            args.gpio_base.clone(),
+            Arc::clone(&control_state),
+        );
+    } else {
+        println!("🔇 [系统] 屏幕按键监听已禁用 (enable_screen_button=0)");
+    }
 
     // Mesh 键监听器 (GPIO 引脚 72, 可自定义短按/长按动作)
     if args.enable_mesh_button != 0 {

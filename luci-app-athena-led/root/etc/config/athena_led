@@ -37,6 +37,7 @@ config settings 'general'
 
     # 按键设置
     option button_gpio '71'
+    option enable_screen_button '1'
     option gpio_backend 'auto'
     option gpio_base 'auto'
     option enable_mesh_button '0'

@@ -50,6 +50,7 @@ start_service() {
 
     # 按键 + GPIO 配置
     config_get buttonGpio "$cfg" 'button_gpio' '71'
+    config_get_bool enableScreenButton "$cfg" 'enable_screen_button' '1'
     config_get gpioBackend "$cfg" 'gpio_backend' 'auto'
     config_get gpioBase "$cfg" 'gpio_base' 'auto'
     # 🌟 网络请求缓存时间（秒）
@@ -98,6 +99,7 @@ start_service() {
 
     # 按键 + GPIO 双后端参数
     procd_append_param command --button-gpio "$buttonGpio"
+    procd_append_param command --enable-screen-button "$enableScreenButton"
     procd_append_param command --gpio-backend "$gpioBackend"
     procd_append_param command --gpio-base "$gpioBase"
     # 🌟 网络请求缓存时间参数（防止频繁访问被拉黑）

@@ -252,6 +252,12 @@ msgstr "屏幕按键 GPIO 引脚"
 msgid "GPIO pin offset for the screen button (default 71 for AX6600). May differ on other firmware."
 msgstr "屏幕按键的 GPIO 引脚偏移 (AX6600 默认 71)，不同固件可能不同。短按/下一模块，双击/返回第一模块，长按/熄屏"
 
+msgid "Enable Screen Button"
+msgstr "启用屏幕按键"
+
+msgid "Uncheck to disable the screen button (short press next / double-click home / long-press off). Useful if the button is broken or physical control is unwanted."
+msgstr "取消勾选以禁用屏幕按键（短按切台 / 双击回首页 / 长按息屏）。按键损坏或不需要物理控制时可用。"
+
 msgid "Enable Mesh Button"
 msgstr "启用 Mesh 键自定义动作"
 
