@@ -299,7 +299,7 @@ msgid "Disable Clock LED (Status 1)"
 msgstr "关闭时钟指示灯 (状态位 1)"
 
 msgid "Turn off the small clock indicator LED to the right of the digits."
-msgstr "关闭时钟指示灯"
+msgstr "关闭时钟指示灯。"
 
 msgid "Disable Medal LED (Status 2)"
 msgstr "关闭奖牌指示灯 (状态位 2)"
