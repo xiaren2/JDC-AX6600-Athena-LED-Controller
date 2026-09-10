@@ -256,7 +256,7 @@ msgid "Enable Screen Button"
 msgstr "启用屏幕按键"
 
 msgid "Uncheck to disable the screen button (short press next / double-click home / long-press off). Useful if the button is broken or physical control is unwanted."
-msgstr "取消勾选以禁用屏幕按键（短按切台 / 双击回首页 / 长按息屏）。按键损坏或不需要物理控制时可用。"
+msgstr "取消勾选以禁用屏幕按键。"
 
 msgid "Enable Mesh Button"
 msgstr "启用 Mesh 键自定义动作"
@@ -356,10 +356,10 @@ msgid "Weather Cache TTL (sec)"
 msgstr "天气缓存时间 (秒)"
 
 msgid "How long to cache weather data (default 1800s = 30 min). Higher values prevent API blacklisting; weather rarely changes more often than this."
-msgstr "天气数据缓存时长 (默认 1800 秒 = 30 分钟)。调高可防止被天气 API 限频拉黑；天气变化很少比这更频繁。"
+msgstr "天气数据缓存时长 (默认 1800 秒 = 30 分钟)。调高可防止被天气 API 限频拉黑。"
 
 msgid "HTTP Cache TTL (sec)"
 msgstr "HTTP 缓存时间 (秒)"
 
 msgid "How long to cache the HTTP custom response (default 60s). Set higher to avoid spamming your own/custom API, or to 0 to disable caching."
-msgstr "HTTP 自定义请求缓存时长 (默认 60 秒)。调高可避免频繁请求你的自定义 API；设为 0 可禁用缓存。"
+msgstr "HTTP 自定义请求缓存时长 (默认 60 秒)。调高可避免频繁请求；设为 0 可禁用缓存。"
