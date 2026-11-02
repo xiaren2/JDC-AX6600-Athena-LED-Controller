@@ -3,15 +3,15 @@ name: Build Chain (Rust Binary + IPK + APK)
 on:
   push:
     branches:
-      - test
+      - test # 推送到 test 分支时自动触发
   release:
-    types: [published]
+    types: [published] # 发布 Release 时触发
   workflow_dispatch:
     inputs:
       branch:
         description: '选择要编译的 Git 分支 / Tag'
         required: true
-        default: 'test'
+        default: 'test' # 手动触发时下拉框默认选中 test
         type: string
 
 permissions:
@@ -30,6 +30,7 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.branch || github.ref }}
 
+      # 1. 自动查找 Makefile 读取版本号
       - name: Get Version
         id: version
         run: |
@@ -45,20 +46,24 @@ jobs:
           
           echo "VERSION=$PKG_VERSION" >> $GITHUB_OUTPUT
 
+      # 2. 准备 Rust 环境
       - name: Install Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-unknown-linux-musl
 
+      # 3. 安装 Zig (解决 ring 编译报错)
       - name: Install Zig & Zigbuild
         run: |
           pip3 install cargo-zigbuild ziglang
 
+      # 4. 编译 Rust
       - name: Compile Rust
         working-directory: ./athena-led
         run: |
           cargo zigbuild --release --target aarch64-unknown-linux-musl
 
+      # 5. 打包二进制
       - name: Package Binary
         id: package
         working-directory: ./athena-led
@@ -75,6 +80,7 @@ jobs:
           echo "ASSET_NAME=$FILENAME" >> $GITHUB_OUTPUT
           echo "✅ Packed binary: $FILENAME"
 
+      # 6. 上传 Rust 二进制到 Release
       - name: Upload Rust Binary to Release
         uses: softprops/action-gh-release@v1
         with:
@@ -84,6 +90,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 7. 传递 Artifact 给下一个 Job
       - name: Pass Artifact to Next Job
         uses: actions/upload-artifact@v4
         with:
@@ -95,7 +102,10 @@ jobs:
   build_openwrt:
     name: 2. Build ${{ matrix.type }}
     needs: build_rust
-    runs-on: ubuntu-latest
+    # 固定 24.04：ubuntu-latest(26.04) 默认改用 uutils coreutils，
+    # 其 install --version 输出不含 "GNU"，会导致 SDK 前置检查
+    # "Please install GNU 'install'" 失败，ipk/apk 都编译不了
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -121,25 +131,16 @@ jobs:
           name: rust-binary-tarball
           path: local_dl/
 
-      # ✅ 修复版：移除 python3-distutils（Ubuntu 26.04 已废弃）
       - name: Prepare SDK
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            zstd \
-            coreutils \
-            build-essential \
-            libncurses-dev \
-            libssl-dev \
-            libelf-dev \
-            python3 \
-            file \
-            rsync \
-            gawk \
-            gettext \
-            xsltproc \
-            wget
-            
+          sudo apt-get update && sudo apt-get install -y zstd libncurses-dev
+
+          # 保险检查：OpenWrt SDK 要求 GNU install
+          if ! install --version 2>&1 | grep -q GNU; then
+            sudo apt-get install -y coreutils-from-gnu || sudo apt-get install -y coreutils
+            install --version | grep -q GNU || { echo "❌ install 不是 GNU 实现，前置检查会失败"; exit 1; }
+          fi
+
           BASE_URL="${{ matrix.sdk_url }}"
           SDK_FILE=$(wget -qO- "$BASE_URL/sha256sums" | grep "sdk" | grep "Linux-x86_64" | head -n 1 | awk '{print $2}' | sed 's/*//g')
           wget -q "$BASE_URL/$SDK_FILE"
@@ -190,6 +191,7 @@ jobs:
           make package/luci-app-athena-led/download V=s
           make package/luci-app-athena-led/compile V=s -j$(nproc)
 
+      # 替换：移除 if 条件，显式指定 tag_name 追加上传到同一个 Release
       - name: Upload Package to Release
         uses: softprops/action-gh-release@v1
         with:
@@ -198,6 +200,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # 同时也保留 Artifact 下载备份
       - name: Upload Package Artifact
         uses: actions/upload-artifact@v4
         with:
