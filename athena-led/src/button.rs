@@ -125,7 +125,10 @@ pub fn spawn_button_listener(
                 else if !long_press_handled {
                     if press_start.unwrap().elapsed() >= Duration::from_secs(2) {
                         println!("🌙 [硬件交互] 检测到长按 2 秒！发送息屏/亮屏切换指令！");
-                        let _ = tx.send(-1);
+                        // 注意: 指令靠值比较下发，若熄屏时再发一次 -1 值没变化会被调度器忽略，
+                        // 所以休眠状态下长按改为发 1（唤醒），避免"长按能熄屏却唤不醒"。
+                        let current = *tx.borrow();
+                        let _ = tx.send(if current < 0 { 1 } else { -1 });
                         long_press_handled = true;
                     }
                 }
@@ -190,6 +193,8 @@ pub fn spawn_button_listener(
 #[cfg(unix)]
 pub fn spawn_mesh_button_listener(
     running: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    tx: tokio::sync::watch::Sender<i32>,
+    restart_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     gpio_pin: String,
     gpio_base: String,
     short_action: String,
@@ -291,7 +296,7 @@ pub fn spawn_mesh_button_listener(
                 else if !long_press_handled {
                     if press_start.unwrap().elapsed() >= Duration::from_secs(2) {
                         println!("📶 [Mesh键] 长按触发！执行: {}", long_action);
-                        execute_action(&long_action);
+                        execute_action(&long_action, &tx, &restart_flag);
                         long_press_handled = true;
                     }
                 }
@@ -312,7 +317,7 @@ pub fn spawn_mesh_button_listener(
                         pending_click_deadline = None;
                         if !double_click_handled {
                             println!("📶 [Mesh键] 短按触发！执行: {}", short_action);
-                            execute_action(&short_action);
+                            execute_action(&short_action, &tx, &restart_flag);
                         }
                         double_click_handled = false;
                     }
@@ -328,7 +333,11 @@ pub fn spawn_mesh_button_listener(
 
 /// 执行按键动作
 #[cfg(unix)]
-fn execute_action(action: &str) {
+fn execute_action(
+    action: &str,
+    tx: &tokio::sync::watch::Sender<i32>,
+    restart_flag: &std::sync::atomic::AtomicBool,
+) {
     use std::process::Command;
     match action {
         "reboot" => {
@@ -345,7 +354,12 @@ fn execute_action(action: &str) {
         }
         "restart_athena" => {
             println!("💡 [Mesh键] 重启 Athena LED...");
-            let _ = Command::new("/etc/init.d/athena_led").arg("restart").spawn();
+            // 不能在这调用 /etc/init.d/athena_led restart：
+            // 该脚本是 athena-led 的子进程，和本进程在同一个 procd 实例 cgroup 里。
+            // procd 停服务时会把这个脚本一起杀掉，于是服务关屏后再也不会启动（屏幕永久黑屏）。
+            // 改为通知主渲染线程就地重新初始化屏幕，并顺便打断正在滚动的显示。
+            restart_flag.store(true, std::sync::atomic::Ordering::SeqCst);
+            let _ = tx.send(-2);
         }
         _ => {} // none 或未知动作
     }
@@ -357,6 +371,8 @@ fn execute_action(action: &str) {
 #[cfg(not(unix))]
 pub fn spawn_mesh_button_listener(
     _running: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    _tx: tokio::sync::watch::Sender<i32>,
+    _restart_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     _gpio_pin: String,
     _gpio_base: String,
     _short_action: String,

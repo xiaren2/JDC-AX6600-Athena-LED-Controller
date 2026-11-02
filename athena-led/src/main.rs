@@ -666,7 +666,7 @@ fn iana_to_posix(zonename: &str) -> Option<String> {
 }
 
 // ==========================================
-// 按键指令约定: 正数N=切台, -1=息屏Toggle, 0=无操作
+// 按键指令约定: 正数N=切台, -1=息屏Toggle, -2=重启屏幕, 0=无操作
 // ==========================================
 
 #[tokio::main]
@@ -700,6 +700,8 @@ async fn main() -> Result<()> {
 
     let running = Arc::new(AtomicBool::new(true));
     let running_for_listener = Arc::clone(&running);
+    // Mesh 键 "重启 Athena LED" 请求标志：由按键线程置位，主渲染循环消费并就地重初始化屏幕
+    let mesh_restart = Arc::new(AtomicBool::new(false));
 
     // 共享控制状态（按键双击 go_home 标志）
     let control_state = control::new_shared();
@@ -732,6 +734,8 @@ async fn main() -> Result<()> {
         let running_for_mesh = Arc::clone(&running);
         button::spawn_mesh_button_listener(
             running_for_mesh,
+            tx.clone(),
+            Arc::clone(&mesh_restart),
             args.mesh_button_gpio.clone(),
             args.gpio_base.clone(),
             args.mesh_short_action.clone(),
@@ -752,7 +756,7 @@ async fn main() -> Result<()> {
                 println!("🛑 收到 SIGINT，关屏退出...");
                 screen.power(false, 0)?; break;
             },
-            _ = process_loop(&mut screen, &args, &mut monitor, rx.clone(), Arc::clone(&control_state), Arc::clone(&running)) => {},
+            _ = process_loop(&mut screen, &args, &mut monitor, rx.clone(), Arc::clone(&control_state), Arc::clone(&running), Arc::clone(&mesh_restart)) => {},
         }
     }
     running.store(false, Ordering::SeqCst);
@@ -782,6 +786,7 @@ async fn process_loop(
     mut rx: watch::Receiver<i32>,
     control_state: control::SharedControl,
     running: Arc<AtomicBool>,
+    mesh_restart: Arc<AtomicBool>,
 ) -> Result<()> {
     let modules: Vec<&str> = args.display_order.split_whitespace().collect();
     if modules.is_empty() { return Ok(()); }
@@ -793,6 +798,31 @@ async fn process_loop(
 
     loop {
         if !running.load(Ordering::SeqCst) { return Ok(()); }
+
+        // ==========================================
+        // [Mesh 键] 重启 Athena LED: 就地重初始化屏幕
+        // 不走 /etc/init.d/athena_led restart —— 脚本是本进程的子进程，
+        // procd 停服务时会把同 cgroup 的脚本一起杀掉，导致服务关屏后再也起不来。
+        // ==========================================
+        if mesh_restart.swap(false, Ordering::SeqCst) {
+            println!("💡 [渲染] 重新初始化屏幕...");
+            screen_on.store(true, Ordering::SeqCst);
+            current_channel = 1;
+            let _ = screen.power(false, 0);
+            // 重新申请 GPIO 失败时短暂退避重试，避免进入渲染失败的死循环
+            loop {
+                match screen.reinit(&args.gpio_backend, &args.gpio_base) {
+                    Ok(()) => break,
+                    Err(e) => {
+                        println!("⚠️ [渲染] 屏幕重新初始化失败，1 秒后重试: {}", e);
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        if !running.load(Ordering::SeqCst) { return Ok(()); }
+                    }
+                }
+            }
+            screen.power(true, args.light_level)?;
+            continue;
+        }
 
         // ==========================================
         // [双击] 消费 go_home 标志: 回到频道 1
@@ -878,8 +908,8 @@ async fn wait_for_wakeup(
         if !running.load(Ordering::SeqCst) { return; }
         if screen_on.load(Ordering::SeqCst) { return; }
         if let Some(cmd) = poll_cmd(rx, &mut last_seen) {
-            if cmd >= 1 || cmd == -1 {
-                // 短按(>=1)唤醒，或长按(-1 Toggle)也唤醒
+            if cmd >= 1 || cmd <= -1 {
+                // 短按(>=1)唤醒，或长按(-1 Toggle)/-2(重启屏幕)也唤醒
                 screen_on.store(true, Ordering::SeqCst);
                 return;
             }
@@ -899,7 +929,7 @@ async fn sleep_with_interrupt(
         if !running.load(Ordering::SeqCst) { return; }
         if screen_on.load(Ordering::SeqCst) { return; }
         if let Some(cmd) = poll_cmd(rx, &mut last_seen) {
-            if cmd >= 1 || cmd == -1 {
+            if cmd >= 1 || cmd <= -1 {
                 screen_on.store(true, Ordering::SeqCst);
                 return;
             }
@@ -919,7 +949,8 @@ async fn show_module_with_interrupt(
     // 检查按键是否变化，变化则返回 true 表示需要打断
     let mut check_key = || -> bool {
         if let Some(cmd) = poll_cmd(rx, &mut last_seen) {
-            if cmd == -1 { return true; }
+            // -1=息屏 Toggle, -2=重启屏幕，都需要立即打断当前显示
+            if cmd <= -1 { return true; }
             if cmd > 0 {
                 *current_channel = ((cmd as usize - 1) % total) + 1;
                 return true;
@@ -1019,7 +1050,7 @@ async fn sleep_with_key_check(secs: u64, rx: &mut watch::Receiver<i32>, current_
     let mut last_seen = *rx.borrow();
     while start.elapsed() < total {
         if let Some(cmd) = poll_cmd(rx, &mut last_seen) {
-            if cmd == -1 { return true; }
+            if cmd <= -1 { return true; }
             if cmd > 0 {
                 let idx = ((cmd as usize - 1) % total_modules) + 1;
                 *current_channel = idx;

@@ -91,7 +91,8 @@ impl Drop for GpioBus {
 }
 
 pub struct LedScreen {
-    bus: GpioBus,
+    // Option 是为了 reinit() 时能先释放旧总线再重新申请（同一批 GPIO 线不能同时被两次请求占用）
+    bus: Option<GpioBus>,
     // 禁用 LED 掩码: bit0=时钟 bit1=奖牌 bit2=上箭头 bit3=下箭头
     disabled_led_mask: u8,
     // 按键 watch channel: flow() 滚动每帧检查按键中断
@@ -107,21 +108,10 @@ impl LedScreen {
     // disabled_led_mask: 4 盏状态灯独立禁用掩码
     // ==========================================
     pub fn new(backend: &str, gpio_base: &str, disabled_led_mask: u8) -> Result<Self> {
-        let bus = match backend.trim() {
-            "cdev" => Self::open_cdev()?,
-            "sysfs" => Self::open_sysfs(gpio_base)?,
-            // auto: 优先字符设备，失败自动回退 sysfs (覆盖绝大多数固件场景)
-            _ => match Self::open_cdev() {
-                Ok(bus) => bus,
-                Err(e) => {
-                    println!("⚠️ [GPIO] 字符设备后端不可用 ({})，自动回退 sysfs 后端", e);
-                    Self::open_sysfs(gpio_base)?
-                }
-            },
-        };
+        let bus = Self::open_bus(backend, gpio_base)?;
 
         let mut screen = Self {
-            bus,
+            bus: Some(bus),
             disabled_led_mask,
             interrupt_rx: None,
             interrupt_last_seen: 0,
@@ -129,6 +119,37 @@ impl LedScreen {
         screen.set_show_model()?;
         screen.set_data_model()?;
         Ok(screen)
+    }
+
+    /// 就地重新初始化屏幕：释放并重新申请 GPIO 总线，再重新下发 TM1628 初始化命令
+    /// 用于 Mesh 键 "重启 Athena LED" 动作。不能调用 /etc/init.d/athena_led restart：
+    /// 那个脚本是本进程的子进程，procd 停服务时会把同 cgroup 的脚本一起杀掉，导致服务不再启动。
+    pub fn reinit(&mut self, backend: &str, gpio_base: &str) -> Result<()> {
+        // 先 drop 旧总线，释放 GPIO 线，再重新申请
+        drop(self.bus.take());
+        self.bus = Some(Self::open_bus(backend, gpio_base)?);
+        self.set_show_model()?;
+        self.set_data_model()?;
+        Ok(())
+    }
+
+    fn open_bus(backend: &str, gpio_base: &str) -> Result<GpioBus> {
+        match backend.trim() {
+            "cdev" => Self::open_cdev(),
+            "sysfs" => Self::open_sysfs(gpio_base),
+            // auto: 优先字符设备，失败自动回退 sysfs (覆盖绝大多数固件场景)
+            _ => match Self::open_cdev() {
+                Ok(bus) => Ok(bus),
+                Err(e) => {
+                    println!("⚠️ [GPIO] 字符设备后端不可用 ({})，自动回退 sysfs 后端", e);
+                    Self::open_sysfs(gpio_base)
+                }
+            },
+        }
+    }
+
+    fn bus_mut(&mut self) -> Result<&mut GpioBus> {
+        self.bus.as_mut().ok_or_else(|| anyhow!("GPIO 总线未初始化"))
     }
 
     // 兼容旧接口：直接传 4 个数字引脚号 + mask（忽略前 4 个硬编码参数，强制走 auto/auto）
@@ -323,14 +344,14 @@ impl LedScreen {
     // TM1628A 底层协议 (STB 选中 -> 命令字节 -> 数据字节 -> STB 释放)
     // ==========================================
     fn unit_write(&mut self, stb: Line, command: u8, values: &[u8]) -> Result<()> {
-        self.bus.set(stb, LOW)?;
+        self.bus_mut()?.set(stb, LOW)?;
         self.write_command_byte(command)?;
 
         for (i, &value) in values.iter().enumerate() {
             self.write_data_byte(value, i % 2 != 0)?;
         }
 
-        self.bus.set(stb, HIGH)?;
+        self.bus_mut()?.set(stb, HIGH)?;
         Ok(())
     }
 
@@ -357,9 +378,9 @@ impl LedScreen {
     }
 
     fn write_bit(&mut self, bit: u8) -> Result<()> {
-        self.bus.set(Line::Clk, LOW)?;
-        self.bus.set(Line::Dio, bit)?;
-        self.bus.set(Line::Clk, HIGH)?;
+        self.bus_mut()?.set(Line::Clk, LOW)?;
+        self.bus_mut()?.set(Line::Dio, bit)?;
+        self.bus_mut()?.set(Line::Clk, HIGH)?;
         Ok(())
     }
 }
