@@ -121,7 +121,7 @@ jobs:
           name: rust-binary-tarball
           path: local_dl/
 
-      # ✅ 修复版：安装所有 host 依赖，解决 prereq 检查失败
+      # ✅ 修复版：移除 python3-distutils（Ubuntu 26.04 已废弃）
       - name: Prepare SDK
         run: |
           sudo apt-get update
@@ -133,7 +133,6 @@ jobs:
             libssl-dev \
             libelf-dev \
             python3 \
-            python3-distutils \
             file \
             rsync \
             gawk \
